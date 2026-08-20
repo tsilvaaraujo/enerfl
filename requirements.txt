@@ -1,0 +1,5 @@
+flwr==1.31.0
+numpy>=1.26.0
+pandas>=2.0.0
+codecarbon==3.2.8
+protobuf>=5.28.0

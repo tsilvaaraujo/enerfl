@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "enerfl"
+version = "0.1.0"
+description = "Lightweight, pluggable energy/carbon/timing profiler for Flower federated learning."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+dependencies = [
+    "flwr>=1.31.0,<1.32.0",
+    "codecarbon>=3.2.0",
+    "protobuf>=5.28.0",
+]
+
+[project.optional-dependencies]
+dataframe = ["pandas>=2.0.0"]
+dev = ["pytest>=8.0.0", "pandas>=2.0.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
+
+# Flat repo: modules live at the root but must import as the `enerfl` package.
+[tool.hatch.build.targets.wheel]
+include = ["*.py"]
+
+[tool.hatch.build.targets.wheel.sources]
+"" = "enerfl"
