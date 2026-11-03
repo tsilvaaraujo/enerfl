@@ -96,6 +96,7 @@ class _ProfiledStrategy(Strategy):
                 grid, current_round, arrays, evaluate_config, timeout, _t, _rec,
                 result,
             )
+            _rec("updates_total", _total_updates(train_ctx, eval_ctx))
 
             if evaluate_fn:
                 t0 = _t()
@@ -152,8 +153,8 @@ class _ProfiledStrategy(Strategy):
             "send_receive_train",
             {
                 "send_receive_train_time": sr.elapsed,
-                "updates_sent": len(train_msgs),
-                "updates_received": len(sr.replies),
+                "updates_sent_train": len(train_msgs),
+                "updates_received_train": len(sr.replies),
             },
         )
 
@@ -168,8 +169,8 @@ class _ProfiledStrategy(Strategy):
             "send_receive_train_time": sr.elapsed,
             "train_payload_bytes_sent": train_payload_sent,
             "train_payload_bytes_received": train_payload_received,
-            "updates_sent": len(train_msgs),
-            "updates_received": len(train_replies),
+            "updates_sent_train": len(train_msgs),
+            "updates_received_train": len(train_replies),
             "cumulative_bytes_sent": p._cumulative_bytes_sent,
             "cumulative_bytes_received": p._cumulative_bytes_received,
         }
@@ -218,6 +219,8 @@ class _ProfiledStrategy(Strategy):
         return {
             "payload_sent": train_payload_sent,
             "payload_received": train_payload_received,
+            "updates_sent": len(train_msgs),
+            "updates_received": len(train_replies),
             "agg_arrays": agg_arrays,
             "client_computation": client_computation,
         }
@@ -247,8 +250,8 @@ class _ProfiledStrategy(Strategy):
             "send_receive_evaluate",
             {
                 "send_receive_evaluate_time": sr.elapsed,
-                "updates_sent": len(eval_msgs),
-                "updates_received": len(sr.replies),
+                "updates_sent_evaluate": len(eval_msgs),
+                "updates_received_evaluate": len(sr.replies),
             },
         )
 
@@ -263,8 +266,8 @@ class _ProfiledStrategy(Strategy):
             "send_receive_evaluate_time": sr.elapsed,
             "evaluate_payload_bytes_sent": eval_payload_sent,
             "evaluate_payload_bytes_received": eval_payload_received,
-            "updates_sent": len(eval_msgs),
-            "updates_received": len(eval_replies),
+            "updates_sent_evaluate": len(eval_msgs),
+            "updates_received_evaluate": len(eval_replies),
             "cumulative_bytes_sent": p._cumulative_bytes_sent,
             "cumulative_bytes_received": p._cumulative_bytes_received,
         }
@@ -307,6 +310,8 @@ class _ProfiledStrategy(Strategy):
         return {
             "payload_sent": eval_payload_sent,
             "payload_received": eval_payload_received,
+            "updates_sent": len(eval_msgs),
+            "updates_received": len(eval_replies),
             "client_computation": client_computation,
         }
 
@@ -324,6 +329,13 @@ class _ProfiledStrategy(Strategy):
 
         p.stop_carbon()
         p.rewrite_csv_from_metrics()
+
+
+def _total_updates(*phase_contexts: dict[str, Any]) -> dict[str, int]:
+    return {
+        "updates_sent": sum(ctx["updates_sent"] for ctx in phase_contexts),
+        "updates_received": sum(ctx["updates_received"] for ctx in phase_contexts),
+    }
 
 
 def profiled(
