@@ -13,6 +13,7 @@ from enerfl.strategy import (
     _read_network_counters,
     _round_efficiency,
     _scalar_metrics,
+    _total_updates,
 )
 
 
@@ -205,3 +206,62 @@ def test_no_derived_metrics_without_client_times(monkeypatch):
     assert "client_computation_train" not in comm
     assert "bandwidth_utilization_bytes_per_sec_train" not in comm
     assert ctx["client_computation"] is None
+
+
+def test_evaluate_counts_do_not_overwrite_train_counts(monkeypatch):
+    profiler = Profiler(algorithm_name="T", enable_carbon=False)
+    strategy = _ProfiledStrategy(_FakeInner(), profiler)
+    results = iter(
+        [
+            _SendReceiveResult(
+                replies=[_Reply(1.0), _Reply(2.0)],
+                elapsed=3.0,
+                tx_delta=0,
+                rx_delta=0,
+                observed=False,
+            ),
+            _SendReceiveResult(
+                replies=[],
+                elapsed=0.0,
+                tx_delta=0,
+                rx_delta=0,
+                observed=False,
+            ),
+        ]
+    )
+    monkeypatch.setattr(
+        st,
+        "_measure_send_receive_with_network_counters",
+        lambda **_kwargs: next(results),
+    )
+
+    profiler.set_round(1)
+    train_context = strategy._profile_train_phase(
+        grid=None,
+        current_round=1,
+        arrays=None,
+        train_config=None,
+        timeout=1.0,
+        _t=time.perf_counter,
+        _rec=profiler.record,
+        result=_FakeResult(),
+    )
+    evaluate_context = strategy._profile_evaluate_phase(
+        grid=None,
+        current_round=1,
+        arrays=None,
+        evaluate_config=None,
+        timeout=1.0,
+        _t=time.perf_counter,
+        _rec=profiler.record,
+        result=_FakeResult(),
+    )
+    profiler.record("updates_total", _total_updates(train_context, evaluate_context))
+
+    metrics = profiler.get_metrics_dict(1)
+    assert metrics["updates_sent"] == 3
+    assert metrics["updates_received"] == 2
+    assert metrics["updates_sent_train"] == 2
+    assert metrics["updates_received_train"] == 2
+    assert metrics["updates_sent_evaluate"] == 1
+    assert metrics["updates_received_evaluate"] == 0
