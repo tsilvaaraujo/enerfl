@@ -2,6 +2,7 @@ import time
 from contextlib import contextmanager
 from typing import Any, Generator
 
+from ._safe import guard, report_failure
 from .carbon import CarbonTracker, get_global_tracker
 from .csv_writer import MetricsCSVWriter
 
@@ -38,8 +39,13 @@ class ClientProfiler:
         self._carbon_snapshot: dict[str, float] = {}
         self._carbon_baseline: dict[str, float] = {}
         if enabled and enable_carbon:
-            self._carbon_tracker = get_global_tracker(**carbon_kwargs)
-            self._carbon_baseline = self._carbon_tracker.read()
+            try:
+                self._carbon_tracker = get_global_tracker(**carbon_kwargs)
+                self._carbon_baseline = self._carbon_tracker.read()
+            except Exception as exc:  # noqa: BLE001
+                report_failure("client.carbon.init", exc)
+                self._carbon_tracker = None
+                self._carbon_baseline = {}
 
     @contextmanager
     def stage(
@@ -85,15 +91,18 @@ class ClientProfiler:
         if self._carbon_tracker is None:
             return {}
         if not self._carbon_snapshot:
-            end = self._carbon_tracker.read()
-            self._carbon_snapshot = {
-                key: max(0.0, end.get(key, 0.0) - self._carbon_baseline.get(key, 0.0))
-                for key in (
-                    "total_energy_joules",
-                    "total_emissions_kg",
-                    "total_carbon_duration",
-                )
-            }
+            with guard("client.carbon.read"):
+                end = self._carbon_tracker.read()
+                self._carbon_snapshot = {
+                    key: max(
+                        0.0, end.get(key, 0.0) - self._carbon_baseline.get(key, 0.0)
+                    )
+                    for key in (
+                        "total_energy_joules",
+                        "total_emissions_kg",
+                        "total_carbon_duration",
+                    )
+                }
         return self._carbon_snapshot
 
     def to_metric_record(self) -> dict[str, float]:
