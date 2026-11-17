@@ -8,6 +8,7 @@ from flwr.serverapp import Grid
 from flwr.serverapp.strategy import Strategy
 from flwr.serverapp.strategy.strategy import Result, log_strategy_start_info
 
+from ._safe import failure_summary, guard
 from .server import Profiler
 
 
@@ -96,7 +97,8 @@ class _ProfiledStrategy(Strategy):
                 grid, current_round, arrays, evaluate_config, timeout, _t, _rec,
                 result,
             )
-            _rec("updates_total", _total_updates(train_ctx, eval_ctx))
+            with guard("round.updates_total"):
+                _rec("updates_total", _total_updates(train_ctx, eval_ctx))
 
             if evaluate_fn:
                 t0 = _t()
@@ -111,13 +113,14 @@ class _ProfiledStrategy(Strategy):
 
             round_total_time = _t() - t_round_start
             round_metrics: dict[str, Any] = {"round_total_time": round_total_time}
-            efficiency = _round_efficiency(
-                round_total_time,
-                train_ctx.get("client_computation"),
-                eval_ctx.get("client_computation"),
-            )
-            if efficiency is not None:
-                round_metrics["round_efficiency"] = efficiency
+            with guard("round.efficiency"):
+                efficiency = _round_efficiency(
+                    round_total_time,
+                    train_ctx.get("client_computation"),
+                    eval_ctx.get("client_computation"),
+                )
+                if efficiency is not None:
+                    round_metrics["round_efficiency"] = efficiency
             _rec("round_total", round_metrics)
 
             if train_ctx.get("agg_arrays") is not None:
@@ -175,22 +178,26 @@ class _ProfiledStrategy(Strategy):
             "cumulative_bytes_received": p._cumulative_bytes_received,
         }
 
-        client_times = _client_total_times(train_replies)
-        client_computation = max(client_times) if client_times else None
-        if client_times:
-            network_overhead = max(0.0, sr.elapsed - client_computation)
-            comm["client_computation_train"] = client_computation
-            comm["network_overhead_train"] = network_overhead
-            comm["straggler_index_train"] = client_computation - min(client_times)
-            if client_computation > 0:
-                comm["comm_to_compute_ratio_train"] = (
-                    network_overhead / client_computation
+        client_computation = None
+        with guard("communication_train.derived"):
+            client_times = _client_total_times(train_replies)
+            client_computation = max(client_times) if client_times else None
+            if client_times:
+                network_overhead = max(0.0, sr.elapsed - client_computation)
+                comm["client_computation_train"] = client_computation
+                comm["network_overhead_train"] = network_overhead
+                comm["straggler_index_train"] = client_computation - min(
+                    client_times
                 )
+                if client_computation > 0:
+                    comm["comm_to_compute_ratio_train"] = (
+                        network_overhead / client_computation
+                    )
 
-        if sr.observed and sr.elapsed > 0:
-            comm["bandwidth_utilization_bytes_per_sec_train"] = (
-                train_payload_sent + train_payload_received
-            ) / sr.elapsed
+            if sr.observed and sr.elapsed > 0:
+                comm["bandwidth_utilization_bytes_per_sec_train"] = (
+                    train_payload_sent + train_payload_received
+                ) / sr.elapsed
 
         _rec("communication_train", comm)
 
@@ -212,9 +219,10 @@ class _ProfiledStrategy(Strategy):
         if agg_metrics is not None:
             log(INFO, "\t\u2514\u2500\u2500> Train metrics: %s", agg_metrics)
             result.train_metrics_clientapp[current_round] = agg_metrics
-            client_scalars = _scalar_metrics(agg_metrics)
-            if client_scalars:
-                _rec("client_train", client_scalars)
+            with guard("client_train.metrics"):
+                client_scalars = _scalar_metrics(agg_metrics)
+                if client_scalars:
+                    _rec("client_train", client_scalars)
 
         return {
             "payload_sent": train_payload_sent,
@@ -272,22 +280,26 @@ class _ProfiledStrategy(Strategy):
             "cumulative_bytes_received": p._cumulative_bytes_received,
         }
 
-        client_times = _client_total_times(eval_replies)
-        client_computation = max(client_times) if client_times else None
-        if client_times:
-            network_overhead = max(0.0, sr.elapsed - client_computation)
-            comm["client_computation_evaluate"] = client_computation
-            comm["network_overhead_evaluate"] = network_overhead
-            comm["straggler_index_evaluate"] = client_computation - min(client_times)
-            if client_computation > 0:
-                comm["comm_to_compute_ratio_evaluate"] = (
-                    network_overhead / client_computation
+        client_computation = None
+        with guard("communication_evaluate.derived"):
+            client_times = _client_total_times(eval_replies)
+            client_computation = max(client_times) if client_times else None
+            if client_times:
+                network_overhead = max(0.0, sr.elapsed - client_computation)
+                comm["client_computation_evaluate"] = client_computation
+                comm["network_overhead_evaluate"] = network_overhead
+                comm["straggler_index_evaluate"] = client_computation - min(
+                    client_times
                 )
+                if client_computation > 0:
+                    comm["comm_to_compute_ratio_evaluate"] = (
+                        network_overhead / client_computation
+                    )
 
-        if sr.observed and sr.elapsed > 0:
-            comm["bandwidth_utilization_bytes_per_sec_evaluate"] = (
-                eval_payload_sent + eval_payload_received
-            ) / sr.elapsed
+            if sr.observed and sr.elapsed > 0:
+                comm["bandwidth_utilization_bytes_per_sec_evaluate"] = (
+                    eval_payload_sent + eval_payload_received
+                ) / sr.elapsed
 
         _rec("communication_evaluate", comm)
 
@@ -303,9 +315,10 @@ class _ProfiledStrategy(Strategy):
         if agg_eval_metrics is not None:
             log(INFO, "\t\u2514\u2500\u2500> Eval metrics: %s", agg_eval_metrics)
             result.evaluate_metrics_clientapp[current_round] = agg_eval_metrics
-            client_scalars = _scalar_metrics(agg_eval_metrics)
-            if client_scalars:
-                _rec("client_evaluate", client_scalars)
+            with guard("client_evaluate.metrics"):
+                client_scalars = _scalar_metrics(agg_eval_metrics)
+                if client_scalars:
+                    _rec("client_evaluate", client_scalars)
 
         return {
             "payload_sent": eval_payload_sent,
@@ -328,6 +341,8 @@ class _ProfiledStrategy(Strategy):
         p.record_global("cumulative_bytes_total", cumulative_total)
 
         p.stop_carbon()
+        for name, value in failure_summary().items():
+            p.record_global(name, value)
         p.rewrite_csv_from_metrics()
 
 
@@ -397,10 +412,14 @@ def _scalar_metrics(metrics: Any) -> dict[str, Any]:
 
 def _read_network_counters(iface: str | None = None) -> tuple[int, int] | None:
     try:
-        with open("/proc/net/dev", "r", encoding="utf-8") as f:
-            lines = f.readlines()[2:]
-    except OSError:
+        return _parse_network_counters(iface)
+    except Exception:  # noqa: BLE001
         return None
+
+
+def _parse_network_counters(iface: str | None) -> tuple[int, int] | None:
+    with open("/proc/net/dev", "r", encoding="utf-8") as f:
+        lines = f.readlines()[2:]
 
     tx_total = 0
     rx_total = 0

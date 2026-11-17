@@ -47,6 +47,7 @@ pytest
 ```
 enerfl/
 ├── __init__.py       # Public API — re-exports all components
+├── _safe.py          # guard()/failure counters — profiling-failure isolation
 ├── carbon.py         # CarbonTracker — CodeCarbon wrapper for CO₂/energy
 ├── client.py         # ClientProfiler — client-side per-stage profiling
 ├── collectors.py     # Pluggable MetricsCollector base class and built-ins
@@ -169,6 +170,26 @@ compare_runs_to_csv(profiler_fedavg, profiler_fedprox, profiler_fedadam, path="c
 - `client_total_time`
 - Optional payload bytes per stage
 - Optional carbon emissions
+
+## Failure isolation
+
+A failure in profiling code never aborts an FL run. Collectors, the carbon
+tracker (init, start, stop, read), the CSV writer, derived metrics and the
+`/proc/net/dev` reader are all isolated: the error is logged once per site as a
+warning, counted, and the run continues without that metric.
+
+Errors from the experiment itself (`configure_*`, `send_and_receive`,
+`aggregate_*`, `evaluate_fn`) are **not** swallowed, and neither are
+`KeyboardInterrupt`/`SystemExit`, so job cancellation still works.
+
+Two global columns make degraded runs detectable in the CSV:
+
+- `profiler_failures` — total swallowed failures (`0` means complete data);
+- `profiler_failure_sites` — `site=count;...`, e.g. `carbon.init=1`.
+
+Deliberately not degraded: a CSV path without a `.csv` suffix raises at
+construction (a deterministic config error, caught before cluster time is
+spent). I/O errors on the CSV (unwritable directory, full disk) do degrade.
 
 ## Extending with Custom Collectors
 

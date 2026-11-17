@@ -3,6 +3,7 @@ import time
 from contextlib import contextmanager
 from typing import Any, Generator
 
+from ._safe import guard, report_failure
 from .carbon import CarbonTracker, get_global_tracker
 from .collectors import (
     CompressionCollector,
@@ -66,20 +67,29 @@ class Profiler:
                 self._collectors.append(cls())
 
         if enable_carbon:
-            self._carbon_tracker = get_global_tracker(**(carbon_tracker_kwargs or {}))
+            try:
+                self._carbon_tracker = get_global_tracker(
+                    **(carbon_tracker_kwargs or {})
+                )
+            except Exception as exc:  # noqa: BLE001
+                report_failure("carbon.init", exc)
+                self._carbon_tracker = None
         if stream_csv_path:
             self.enable_csv_stream(stream_csv_path)
 
     def start_carbon(self) -> "Profiler":
         if self._carbon_tracker is not None:
-            self._carbon_tracker.start()
+            with guard("carbon.start"):
+                self._carbon_tracker.start()
         return self
 
     def stop_carbon(self) -> "Profiler":
         if self._carbon_tracker is not None:
-            self._carbon_tracker.stop()
-            for name, value in self._carbon_tracker.snapshot().items():
-                self._metrics.record_global(name, value)
+            with guard("carbon.stop"):
+                self._carbon_tracker.stop()
+            with guard("carbon.snapshot"):
+                for name, value in self._carbon_tracker.snapshot().items():
+                    self._metrics.record_global(name, value)
         return self
 
     def add_collector(self, collector: MetricsCollector) -> "Profiler":
@@ -97,46 +107,59 @@ class Profiler:
     @contextmanager
     def measure(self, phase: str, **context: Any) -> Generator[None, None, None]:
         t0 = time.perf_counter()
-        start_states = {
-            c.name(): c.on_start(phase, self._current_round, t0=t0, **context)
-            for c in self._collectors
-        }
+        start_states: dict[str, dict] = {}
+        for c in self._collectors:
+            with guard(f"collector.{_collector_name(c)}.on_start"):
+                start_states[c.name()] = c.on_start(
+                    phase, self._current_round, t0=t0, **context
+                )
         yield
         for collector in self._collectors:
-            metrics = collector.on_end(
-                phase,
-                self._current_round,
-                start_states.get(collector.name(), {}),
-                **context,
-            )
-            self._metrics.record(self._current_round, phase, metrics)
+            name = _collector_name(collector)
+            if name not in start_states:
+                continue
+            with guard(f"collector.{name}.on_end"):
+                metrics = collector.on_end(
+                    phase, self._current_round, start_states[name], **context
+                )
+                self._metrics.record(self._current_round, phase, metrics)
 
     def record(self, phase: str, metrics: dict[str, Any]) -> None:
-        self._metrics.record(self._current_round, phase, metrics)
+        with guard("record"):
+            self._metrics.record(self._current_round, phase, metrics)
 
     def record_global(self, name: str, value: Any) -> None:
-        self._metrics.record_global(name, value)
+        with guard("record_global"):
+            self._metrics.record_global(name, value)
 
     def enable_csv_stream(self, path: str) -> "Profiler":
-        self._csv_writer = MetricsCSVWriter(path, base_fields=["algorithm", "round"])
+        try:
+            self._csv_writer = MetricsCSVWriter(
+                path, base_fields=["algorithm", "round"]
+            )
+        except OSError as exc:
+            report_failure("csv.open", exc)
+            self._csv_writer = None
         return self
 
     def write_round_to_csv(self, round_num: int | None = None) -> None:
         if self._csv_writer is None:
             return
-        rn = self._current_round if round_num is None else round_num
-        self._csv_writer.append_row(self._build_round_row(rn))
+        with guard("csv.write_round"):
+            rn = self._current_round if round_num is None else round_num
+            self._csv_writer.append_row(self._build_round_row(rn))
 
     def rewrite_csv_from_metrics(self, path: str | None = None) -> None:
         if path is not None:
             self.enable_csv_stream(path)
         if self._csv_writer is None:
             return
-        rows = [
-            self._build_round_row(round_num)
-            for round_num in sorted(self._metrics.rounds.keys())
-        ]
-        self._csv_writer.rewrite_rows(rows)
+        with guard("csv.rewrite"):
+            rows = [
+                self._build_round_row(round_num)
+                for round_num in sorted(self._metrics.rounds.keys())
+            ]
+            self._csv_writer.rewrite_rows(rows)
 
     @property
     def algorithm_name(self) -> str:
@@ -225,6 +248,13 @@ class Profiler:
             row.update(phase_metrics)
         row.update(self._metrics.global_metrics)
         return row
+
+
+def _collector_name(collector: MetricsCollector) -> str:
+    try:
+        return collector.name()
+    except Exception:  # noqa: BLE001
+        return type(collector).__name__
 
 
 def _print_metric(name: str, value: Any, indent: int = 0) -> None:
