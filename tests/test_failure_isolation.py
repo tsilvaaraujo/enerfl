@@ -2,6 +2,7 @@ import builtins
 from unittest.mock import mock_open
 
 import pytest
+from flwr.common import ArrayRecord
 
 import enerfl.client as client_mod
 import enerfl.server as server_mod
@@ -223,7 +224,9 @@ def test_malformed_proc_net_dev_is_unobservable(monkeypatch):
 
 def _run(p, grid):
     strat = _ProfiledStrategy(_Inner(), p)
-    return strat.start(grid=grid, initial_arrays=None, num_rounds=2, timeout=1.0)
+    return strat.start(
+        grid=grid, initial_arrays=ArrayRecord(), num_rounds=2, timeout=1.0
+    )
 
 
 def test_clean_run_reports_zero_failures(monkeypatch):
