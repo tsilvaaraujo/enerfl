@@ -1,4 +1,4 @@
-import pytest
+from codecarbon import EmissionsTracker, OfflineEmissionsTracker
 
 import enerfl.carbon as carbon_mod
 from enerfl.carbon import CarbonTracker, _finite, get_global_tracker
@@ -43,13 +43,15 @@ def test_user_kwargs_override_defaults():
     assert t._tracker._measure_power_secs == 5
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="EmissionsTracker does not accept country_iso_code; it is dropped",
-)
 def test_country_iso_code_reaches_the_tracker():
     t = CarbonTracker(country_iso_code="FRA")
+    assert isinstance(t._tracker, OfflineEmissionsTracker)
     assert t._tracker._country_iso_code == "FRA"
+
+
+def test_without_country_the_online_tracker_is_used():
+    t = CarbonTracker()
+    assert type(t._tracker) is EmissionsTracker
 
 
 def test_global_tracker_is_singleton():
