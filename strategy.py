@@ -222,7 +222,10 @@ class _ProfiledStrategy(Strategy):
             with guard("client_train.metrics"):
                 client_scalars = _scalar_metrics(agg_metrics)
                 if client_scalars:
-                    _rec("client_train", client_scalars)
+                    _rec(
+                        "client_train",
+                        _with_phase_suffix(client_scalars, "train"),
+                    )
 
         return {
             "payload_sent": train_payload_sent,
@@ -318,7 +321,10 @@ class _ProfiledStrategy(Strategy):
             with guard("client_evaluate.metrics"):
                 client_scalars = _scalar_metrics(agg_eval_metrics)
                 if client_scalars:
-                    _rec("client_evaluate", client_scalars)
+                    _rec(
+                        "client_evaluate",
+                        _with_phase_suffix(client_scalars, "evaluate"),
+                    )
 
         return {
             "payload_sent": eval_payload_sent,
@@ -408,6 +414,10 @@ def _scalar_metrics(metrics: Any) -> dict[str, Any]:
         if isinstance(value, (int, float)):
             out[str(key)] = value
     return out
+
+
+def _with_phase_suffix(metrics: dict[str, Any], phase: str) -> dict[str, Any]:
+    return {f"{key}_{phase}": value for key, value in metrics.items()}
 
 
 def _read_network_counters(iface: str | None = None) -> tuple[int, int] | None:
