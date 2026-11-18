@@ -265,3 +265,50 @@ def test_evaluate_counts_do_not_overwrite_train_counts(monkeypatch):
     assert metrics["updates_received_train"] == 2
     assert metrics["updates_sent_evaluate"] == 1
     assert metrics["updates_received_evaluate"] == 0
+
+
+class _InnerReportingClientEnergy(_FakeInner):
+    def aggregate_train(self, server_round, replies):
+        return (None, {"loss": 0.1, "client_energy_joules": 10.0})
+
+    def aggregate_evaluate(self, server_round, replies):
+        return {"accuracy": 0.9, "client_energy_joules": 2.0}
+
+
+def test_evaluate_client_metrics_do_not_overwrite_train_client_metrics(
+    monkeypatch,
+):
+    profiler = Profiler(algorithm_name="T", enable_carbon=False)
+    strategy = _ProfiledStrategy(_InnerReportingClientEnergy(), profiler)
+    reply = _SendReceiveResult(
+        replies=[_Reply(1.0)],
+        elapsed=1.0,
+        tx_delta=0,
+        rx_delta=0,
+        observed=False,
+    )
+    monkeypatch.setattr(
+        st,
+        "_measure_send_receive_with_network_counters",
+        lambda **_kwargs: reply,
+    )
+
+    profiler.set_round(1)
+    phase_args = dict(
+        grid=None,
+        current_round=1,
+        arrays=None,
+        timeout=1.0,
+        _t=time.perf_counter,
+        _rec=profiler.record,
+        result=_FakeResult(),
+    )
+    strategy._profile_train_phase(train_config=None, **phase_args)
+    strategy._profile_evaluate_phase(evaluate_config=None, **phase_args)
+
+    row = profiler._build_round_row(1)
+    assert row["client_energy_joules_train"] == 10.0
+    assert row["client_energy_joules_evaluate"] == 2.0
+    assert row["loss_train"] == 0.1
+    assert row["accuracy_evaluate"] == 0.9
+    assert "client_energy_joules" not in row
