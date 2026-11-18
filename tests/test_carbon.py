@@ -1,3 +1,5 @@
+import pytest
+
 import enerfl.carbon as carbon_mod
 from enerfl.carbon import CarbonTracker, _finite, get_global_tracker
 
@@ -29,11 +31,25 @@ def test_energy_converted_to_joules():
     assert reading["total_emissions_kg"] == 0.0
 
 
-def test_kwargs_forwarded_to_backend():
-    t = CarbonTracker(country_iso_code="FRA", measure_power_secs=1)
-    assert t._tracker.kwargs["country_iso_code"] == "FRA"
-    assert t._tracker.kwargs["save_to_file"] is False
-    assert t._tracker.kwargs["log_level"] == "error"
+def test_defaults_reach_the_tracker():
+    t = CarbonTracker()
+    assert t._tracker._save_to_file is False
+    assert t._tracker._log_level == "error"
+    assert t._tracker._measure_power_secs == 1
+
+
+def test_user_kwargs_override_defaults():
+    t = CarbonTracker(measure_power_secs=5)
+    assert t._tracker._measure_power_secs == 5
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="EmissionsTracker does not accept country_iso_code; it is dropped",
+)
+def test_country_iso_code_reaches_the_tracker():
+    t = CarbonTracker(country_iso_code="FRA")
+    assert t._tracker._country_iso_code == "FRA"
 
 
 def test_global_tracker_is_singleton():

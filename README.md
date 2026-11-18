@@ -17,7 +17,7 @@ The core `Profiler` and `ClientProfiler` APIs are framework-agnostic and can ins
 
 ## Requirements
 
-- Python >= 3.10
+- Python >= 3.11
 - See [requirements.txt](requirements.txt) for pinned dependency versions.
 
 ## Installation
@@ -28,17 +28,10 @@ pip install -r requirements.txt
 
 ## Testing
 
-The unit tests stub `flwr`/`codecarbon` when they are absent, so they run
-off-cluster with only `pytest`:
+The tests run against the real `flwr` and `codecarbon`:
 
 ```bash
-uv run --with pytest pytest
-```
-
-Or, in an existing environment:
-
-```bash
-pip install -e ".[dev]"
+pip install ".[dev]"
 pytest
 ```
 
