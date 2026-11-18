@@ -62,3 +62,30 @@ def test_global_tracker_is_singleton():
         assert a is b
     finally:
         carbon_mod._GLOBAL_TRACKER = None
+
+
+class _Clock:
+    def __init__(self, now):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+
+def test_duration_while_running_is_the_elapsed_time(monkeypatch):
+    clock = _Clock(100.0)
+    monkeypatch.setattr(carbon_mod, "perf_counter", clock)
+    t = CarbonTracker().start()
+    clock.now = 103.0
+    assert t.read()["total_carbon_duration"] == 3.0
+    t.stop()
+
+
+def test_duration_is_frozen_at_stop(monkeypatch):
+    clock = _Clock(100.0)
+    monkeypatch.setattr(carbon_mod, "perf_counter", clock)
+    t = CarbonTracker().start()
+    clock.now = 105.0
+    t.stop()
+    clock.now = 200.0
+    assert t.read()["total_carbon_duration"] == 5.0
