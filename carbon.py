@@ -1,7 +1,7 @@
 import atexit
 import inspect
-import time
 from logging import WARNING
+from time import perf_counter
 from typing import Any
 
 from flwr.common import log
@@ -75,11 +75,14 @@ class CarbonTracker:
         self._tracker = tracker_class(**safe_kwargs)
         self._started = False
         self._stopped = False
+        self._start_time: float | None = None
+        self._stop_time: float | None = None
 
     def start(self) -> "CarbonTracker":
         if not self._started:
             self._tracker.start()
             self._started = True
+            self._start_time = perf_counter()
         return self
 
     def _energy_joules(self) -> float:
@@ -94,8 +97,8 @@ class CarbonTracker:
                 "total_carbon_duration": 0.0,
             }
         emissions = float(getattr(self._tracker, "final_emissions", 0.0) or 0.0)
-        start_time = getattr(self._tracker, "_start_time", None)
-        duration_s = time.time() - start_time if start_time is not None else 0.0
+        end_time = self._stop_time if self._stop_time is not None else perf_counter()
+        duration_s = end_time - self._start_time
         return {
             "total_energy_joules": _finite(self._energy_joules()),
             "total_emissions_kg": _finite(emissions),
@@ -109,6 +112,7 @@ class CarbonTracker:
         if self._started and not self._stopped:
             self._tracker.stop()
             self._stopped = True
+            self._stop_time = perf_counter()
         return self
 
 
