@@ -18,12 +18,18 @@ The core `Profiler` and `ClientProfiler` APIs are framework-agnostic and can ins
 ## Requirements
 
 - Python >= 3.11
-- See [requirements.txt](requirements.txt) for pinned dependency versions.
+- Dependencies and their supported version ranges are declared in [pyproject.toml](pyproject.toml).
 
 ## Installation
 
 ```bash
-pip install -r requirements.txt
+pip install .
+```
+
+With `to_dataframe()` support:
+
+```bash
+pip install ".[dataframe]"
 ```
 
 ## Testing
@@ -47,8 +53,7 @@ enerfl/
 ├── comparison.py     # compare_runs() / compare_runs_to_csv()
 ├── metrics.py        # ProfilerMetrics — per-round metric storage dataclass
 ├── server.py         # Profiler — server-side profiler with collector system
-├── strategy.py       # Optional Flower Strategy integration
-└── requirements.txt  # Pinned dependency versions
+└── strategy.py       # Optional Flower Strategy integration
 ```
 
 ## Usage
