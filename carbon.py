@@ -96,7 +96,9 @@ class CarbonTracker:
                 "total_emissions_kg": 0.0,
                 "total_carbon_duration": 0.0,
             }
-        emissions = float(getattr(self._tracker, "final_emissions", 0.0) or 0.0)
+        emissions = (
+            self._tracker.final_emissions if self._stopped else self._tracker.flush()
+        )
         end_time = self._stop_time if self._stop_time is not None else perf_counter()
         duration_s = end_time - self._start_time
         return {

@@ -1,7 +1,10 @@
+import time
+
 from codecarbon import EmissionsTracker, OfflineEmissionsTracker
 
 import enerfl.carbon as carbon_mod
 from enerfl.carbon import CarbonTracker, _finite, get_global_tracker
+from enerfl.client import ClientProfiler
 
 
 def test_finite_coerces_bad_values():
@@ -23,12 +26,9 @@ def test_read_before_start_is_zero():
 
 
 def test_energy_converted_to_joules():
-    t = CarbonTracker()
-    t.start()
+    t = CarbonTracker().start().stop()
     t._tracker._total_energy.kWh = 2.0
-    reading = t.read()
-    assert reading["total_energy_joules"] == 2.0 * 3.6e6
-    assert reading["total_emissions_kg"] == 0.0
+    assert t.read()["total_energy_joules"] == 2.0 * 3.6e6
 
 
 def test_defaults_reach_the_tracker():
@@ -89,3 +89,33 @@ def test_duration_is_frozen_at_stop(monkeypatch):
     t.stop()
     clock.now = 200.0
     assert t.read()["total_carbon_duration"] == 5.0
+
+
+def _busy(seconds):
+    end = time.perf_counter() + seconds
+    while time.perf_counter() < end:
+        pass
+
+
+def test_emissions_are_reported_while_running():
+    t = CarbonTracker(country_iso_code="FRA").start()
+    _busy(0.3)
+    reading = t.read()
+    t.stop()
+    assert reading["total_emissions_kg"] > 0
+
+
+def test_emissions_after_stop_match_the_final_value():
+    t = CarbonTracker(country_iso_code="FRA").start()
+    _busy(0.3)
+    t.stop()
+    assert t.read()["total_emissions_kg"] == t._tracker.final_emissions > 0
+
+
+def test_client_reports_its_emissions(monkeypatch):
+    monkeypatch.setattr(carbon_mod, "_GLOBAL_TRACKER", None)
+    cp = ClientProfiler(enable_carbon=True, country_iso_code="FRA")
+    _busy(0.3)
+    record = cp.to_metric_record()
+    carbon_mod._GLOBAL_TRACKER.stop()
+    assert record["client_emissions_kg"] > 0
