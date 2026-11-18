@@ -52,14 +52,19 @@ def _filter_tracker_kwargs(klass: type, kwargs: dict[str, Any]) -> dict[str, Any
 class CarbonTracker:
     def __init__(self, **tracker_kwargs: Any) -> None:
         try:
-            from codecarbon import EmissionsTracker
+            from codecarbon import EmissionsTracker, OfflineEmissionsTracker
         except ImportError as exc:
             raise ImportError(
                 "CarbonTracker requires 'codecarbon'. Install: pip install codecarbon"
             ) from exc
 
+        tracker_class = (
+            OfflineEmissionsTracker
+            if "country_iso_code" in tracker_kwargs
+            else EmissionsTracker
+        )
         safe_kwargs = _filter_tracker_kwargs(
-            EmissionsTracker,
+            tracker_class,
             {
                 "log_level": "error",
                 "save_to_file": False,
@@ -67,7 +72,7 @@ class CarbonTracker:
                 **tracker_kwargs,
             },
         )
-        self._tracker = EmissionsTracker(**safe_kwargs)
+        self._tracker = tracker_class(**safe_kwargs)
         self._started = False
         self._stopped = False
 
