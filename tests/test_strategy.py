@@ -9,6 +9,7 @@ from enerfl.server import Profiler
 from enerfl.strategy import (
     _ProfiledStrategy,
     _SendReceiveResult,
+    _client_carbon_totals,
     _client_total_times,
     _read_network_counters,
     _round_efficiency,
@@ -18,8 +19,8 @@ from enerfl.strategy import (
 
 
 class _Reply:
-    def __init__(self, total_time=None, error=False):
-        self.content = {"metrics": {}}
+    def __init__(self, total_time=None, error=False, **metrics):
+        self.content = {"metrics": dict(metrics)}
         if total_time is not None:
             self.content["metrics"]["client_total_time"] = total_time
         self._error = error
@@ -312,3 +313,72 @@ def test_evaluate_client_metrics_do_not_overwrite_train_client_metrics(
     assert row["loss_train"] == 0.1
     assert row["accuracy_evaluate"] == 0.9
     assert "client_energy_joules" not in row
+
+
+def test_client_carbon_totals_sum_every_valid_reply():
+    replies = [
+        _Reply(client_energy_joules=10.0, client_emissions_kg=1.0),
+        _Reply(client_energy_joules=30.0, client_emissions_kg=3.0),
+        _Reply(client_energy_joules=999.0, error=True),
+        _Reply(),
+    ]
+    assert _client_carbon_totals(replies, "train") == {
+        "client_energy_joules_sum_train": 40.0,
+        "client_energy_joules_max_train": 30.0,
+        "client_energy_joules_min_train": 10.0,
+        "client_emissions_kg_sum_train": 4.0,
+        "client_emissions_kg_max_train": 3.0,
+        "client_emissions_kg_min_train": 1.0,
+    }
+
+
+def test_client_carbon_totals_empty_without_carbon_metrics():
+    assert _client_carbon_totals([_Reply(1.0)], "train") == {}
+
+
+def test_client_carbon_totals_are_recorded_per_phase(monkeypatch):
+    profiler = Profiler(algorithm_name="T", enable_carbon=False)
+    strategy = _ProfiledStrategy(_FakeInner(), profiler)
+    results = iter(
+        [
+            _SendReceiveResult(
+                replies=[
+                    _Reply(client_energy_joules=10.0),
+                    _Reply(client_energy_joules=30.0),
+                ],
+                elapsed=1.0,
+                tx_delta=0,
+                rx_delta=0,
+                observed=False,
+            ),
+            _SendReceiveResult(
+                replies=[_Reply(client_energy_joules=2.0)],
+                elapsed=1.0,
+                tx_delta=0,
+                rx_delta=0,
+                observed=False,
+            ),
+        ]
+    )
+    monkeypatch.setattr(
+        st,
+        "_measure_send_receive_with_network_counters",
+        lambda **_kwargs: next(results),
+    )
+
+    profiler.set_round(1)
+    phase_args = dict(
+        grid=None,
+        current_round=1,
+        arrays=None,
+        timeout=1.0,
+        _t=time.perf_counter,
+        _rec=profiler.record,
+        result=_FakeResult(),
+    )
+    strategy._profile_train_phase(train_config=None, **phase_args)
+    strategy._profile_evaluate_phase(evaluate_config=None, **phase_args)
+
+    row = profiler._build_round_row(1)
+    assert row["client_energy_joules_sum_train"] == 40.0
+    assert row["client_energy_joules_sum_evaluate"] == 2.0
