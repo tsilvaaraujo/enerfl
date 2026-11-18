@@ -201,6 +201,11 @@ class _ProfiledStrategy(Strategy):
 
         _rec("communication_train", comm)
 
+        with guard("client_carbon_train.totals"):
+            carbon_totals = _client_carbon_totals(train_replies, "train")
+            if carbon_totals:
+                _rec("client_carbon_train", carbon_totals)
+
         t0 = _t()
         agg_arrays, agg_metrics = self.aggregate_train(
             current_round, train_replies,
@@ -306,6 +311,11 @@ class _ProfiledStrategy(Strategy):
 
         _rec("communication_evaluate", comm)
 
+        with guard("client_carbon_evaluate.totals"):
+            carbon_totals = _client_carbon_totals(eval_replies, "evaluate")
+            if carbon_totals:
+                _rec("client_carbon_evaluate", carbon_totals)
+
         t0 = _t()
         agg_eval_metrics = (
             self.aggregate_evaluate(current_round, eval_replies)
@@ -387,17 +397,32 @@ def _round_efficiency(
 
 
 def _client_total_times(replies: list[Message]) -> list[float]:
-    times: list[float] = []
+    return _client_metric_values(replies, "client_total_time")
+
+
+def _client_metric_values(replies: list[Message], key: str) -> list[float]:
+    values: list[float] = []
     for reply in replies:
         try:
             if reply.has_error():
                 continue
-            value = reply.content["metrics"]["client_total_time"]
+            value = reply.content["metrics"][key]
         except (AttributeError, KeyError, TypeError, ValueError):
             continue
         if isinstance(value, (int, float)) and not isinstance(value, bool):
-            times.append(float(value))
-    return times
+            values.append(float(value))
+    return values
+
+
+def _client_carbon_totals(replies: list[Message], phase: str) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    for key in ("client_energy_joules", "client_emissions_kg"):
+        values = _client_metric_values(replies, key)
+        if values:
+            totals[f"{key}_sum_{phase}"] = sum(values)
+            totals[f"{key}_max_{phase}"] = max(values)
+            totals[f"{key}_min_{phase}"] = min(values)
+    return totals
 
 
 def _scalar_metrics(metrics: Any) -> dict[str, Any]:

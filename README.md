@@ -155,6 +155,7 @@ compare_runs_to_csv(profiler_fedavg, profiler_fedprox, profiler_fedadam, path="c
 - **Client decomposition with Flower**: `client_computation_train`, `network_overhead_train`, and evaluate equivalents — reconstructed from the per-client `client_total_time` embedded in each reply.
 - **Derived** (recorded only when the inputs are available): `straggler_index_train`/`straggler_index_evaluate` (slowest − fastest client), `comm_to_compute_ratio_train`/`_evaluate` (network overhead ÷ client compute), `bandwidth_utilization_bytes_per_sec_train`/`_evaluate` (payload bytes ÷ dispatch→collect span, only when NIC counters are observable), and `round_efficiency` (client compute ÷ round wall-clock).
 - **Client metrics with Flower**: every numeric metric aggregated from client replies, suffixed with its phase (e.g. `loss_train`, `accuracy_evaluate`, `client_energy_joules_train`, `client_energy_joules_evaluate`), so evaluate values never overwrite train values.
+- **Client energy totals with Flower**: Flower aggregates client metrics as a weighted average, so `client_energy_joules_train` is a mean per client, not the federation total. The totals are read from each client reply instead: `client_energy_joules_sum_train`, `client_energy_joules_max_train`, `client_energy_joules_min_train`, the same for `client_emissions_kg`, and evaluate equivalents.
 - **Carbon** (optional): `total_emissions_kg`, `total_energy_joules`, `total_carbon_duration`.
 
 ### Stage metrics
