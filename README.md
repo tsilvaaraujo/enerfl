@@ -59,6 +59,7 @@ src/enerfl/
 ├── comparison.py     # compare_runs() / compare_runs_to_csv()
 ├── csv_writer.py     # MetricsCSVWriter — streaming CSV output
 ├── metrics.py        # ProfilerMetrics — per-round metric storage dataclass
+├── network.py        # Host NIC byte counters (/proc/net/dev)
 ├── server.py         # Profiler — server-side profiler with collector system
 └── strategy.py       # Optional Flower Strategy integration
 ```

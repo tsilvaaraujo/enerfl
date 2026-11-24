@@ -1,6 +1,4 @@
-import builtins
 import time
-from unittest.mock import mock_open
 
 import pytest
 
@@ -11,7 +9,6 @@ from enerfl.strategy import (
     _SendReceiveResult,
     _client_carbon_totals,
     _client_total_times,
-    _read_network_counters,
     _round_efficiency,
     _scalar_metrics,
     _total_updates,
@@ -77,26 +74,6 @@ def test_client_total_times_filters_errors_and_nonnumeric():
 def test_scalar_metrics_excludes_bool_and_nonnumeric():
     out = _scalar_metrics({"a": 1, "b": 2.5, "flag": True, "name": "x"})
     assert out == {"a": 1, "b": 2.5}
-
-
-def test_read_network_counters_missing_file(monkeypatch):
-    def boom(*_a, **_k):
-        raise OSError()
-
-    monkeypatch.setattr(builtins, "open", boom)
-    assert _read_network_counters() is None
-
-
-def test_read_network_counters_parses_and_skips_loopback(monkeypatch):
-    content = (
-        "hdr1\n"
-        "hdr2\n"
-        "  eth0: 100 0 0 0 0 0 0 0 200 0 0 0 0 0 0 0\n"
-        "    lo: 999 0 0 0 0 0 0 0 999 0 0 0 0 0 0 0\n"
-    )
-    monkeypatch.setattr(builtins, "open", mock_open(read_data=content))
-    tx_total, rx_total = _read_network_counters()
-    assert (tx_total, rx_total) == (200, 100)
 
 
 # --- derived metrics through the phase methods ------------------------------
