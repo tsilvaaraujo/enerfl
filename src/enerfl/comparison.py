@@ -14,15 +14,16 @@ def compare_runs(
     per_round: list[list[dict[str, Any]]] = []
 
     for p in profilers:
-        glb = dict(p._metrics.global_metrics)
-        name = p._algorithm_name or f"run_{len(summaries)}"
+        metrics = p.get_metrics()
+        glb = dict(metrics.global_metrics)
+        name = p.algorithm_name or f"run_{len(summaries)}"
         glb["algorithm"] = name
 
         all_round_metrics: dict[str, list[float]] = {}
         round_rows: list[dict[str, Any]] = []
-        for rn in sorted(p._metrics.rounds.keys()):
+        for rn in sorted(metrics.rounds.keys()):
             row: dict[str, Any] = {"algorithm": name, "round": rn}
-            for phase_metrics in p._metrics.rounds[rn].values():
+            for phase_metrics in metrics.rounds[rn].values():
                 for k, v in phase_metrics.items():
                     if isinstance(v, (int, float)) and v is not None:
                         all_round_metrics.setdefault(k, []).append(float(v))
@@ -42,12 +43,13 @@ def compare_runs(
 def compare_runs_to_csv(*profilers: Profiler, path: str) -> None:
     all_rows: list[dict[str, Any]] = []
     for p in profilers:
-        name = p._algorithm_name or f"run_{len(all_rows)}"
-        for rn in sorted(p._metrics.rounds.keys()):
+        metrics = p.get_metrics()
+        name = p.algorithm_name or f"run_{len(all_rows)}"
+        for rn in sorted(metrics.rounds.keys()):
             row: dict[str, Any] = {"algorithm": name, "round": rn}
-            for phase_metrics in p._metrics.rounds[rn].values():
+            for phase_metrics in metrics.rounds[rn].values():
                 row.update(phase_metrics)
-            row.update(p._metrics.global_metrics)
+            row.update(metrics.global_metrics)
             all_rows.append(row)
 
     if not all_rows:
