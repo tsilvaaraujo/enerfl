@@ -162,8 +162,36 @@ class Profiler:
             self._csv_writer.rewrite_rows(rows)
 
     @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    @property
+    def network_interface(self) -> str | None:
+        return self._network_interface
+
+    @property
     def algorithm_name(self) -> str:
         return self._algorithm_name
+
+    def set_default_algorithm_name(self, name: str) -> None:
+        """Use ``name`` as the algorithm name unless one was already set."""
+        if self._algorithm_name:
+            return
+        self._algorithm_name = name
+        self._metrics.record_global("algorithm_name", name)
+
+    @property
+    def cumulative_bytes_sent(self) -> int:
+        return self._cumulative_bytes_sent
+
+    @property
+    def cumulative_bytes_received(self) -> int:
+        return self._cumulative_bytes_received
+
+    def add_payload_bytes(self, sent: int, received: int) -> None:
+        """Add one phase's network traffic to the run's cumulative totals."""
+        self._cumulative_bytes_sent += sent
+        self._cumulative_bytes_received += received
 
     def get_metrics(self) -> ProfilerMetrics:
         return self._metrics

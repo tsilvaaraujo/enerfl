@@ -342,3 +342,27 @@ def test_package_imports_without_flwr_and_profiled_explains_the_extra():
         [sys.executable, "-c", code], capture_output=True, text=True
     )
     assert proc.returncode == 0, proc.stderr
+
+
+def test_profiler_public_accessors():
+    p = Profiler(network_interface="eth0", enabled=False)
+    assert p.enabled is False
+    assert p.network_interface == "eth0"
+
+
+def test_payload_bytes_accumulate_through_the_public_api():
+    p = Profiler()
+    p.add_payload_bytes(10, 4)
+    p.add_payload_bytes(5, 1)
+    assert (p.cumulative_bytes_sent, p.cumulative_bytes_received) == (15, 5)
+
+
+def test_default_algorithm_name_does_not_override_an_explicit_one():
+    named = Profiler(algorithm_name="FedProx")
+    named.set_default_algorithm_name("FedAvg")
+    assert named.algorithm_name == "FedProx"
+
+    unnamed = Profiler()
+    unnamed.set_default_algorithm_name("FedAvg")
+    assert unnamed.algorithm_name == "FedAvg"
+    assert unnamed.get_metrics().global_metrics["algorithm_name"] == "FedAvg"

@@ -149,7 +149,7 @@ class _ProfiledStrategy(Strategy):
         result,
     ) -> dict[str, Any]:
         p = self._profiler
-        net_iface = getattr(p, "_network_interface", None)
+        net_iface = p.network_interface
 
         t0 = _t()
         train_msgs = list(
@@ -179,8 +179,7 @@ class _ProfiledStrategy(Strategy):
         train_payload_received = sr.rx_delta if sr.observed else 0
         train_replies = sr.replies
 
-        p._cumulative_bytes_sent += train_payload_sent
-        p._cumulative_bytes_received += train_payload_received
+        p.add_payload_bytes(train_payload_sent, train_payload_received)
 
         comm: dict[str, Any] = {
             "send_receive_train_time": sr.elapsed,
@@ -188,8 +187,8 @@ class _ProfiledStrategy(Strategy):
             "train_payload_bytes_received": train_payload_received,
             "updates_sent_train": len(train_msgs),
             "updates_received_train": len(train_replies),
-            "cumulative_bytes_sent": p._cumulative_bytes_sent,
-            "cumulative_bytes_received": p._cumulative_bytes_received,
+            "cumulative_bytes_sent": p.cumulative_bytes_sent,
+            "cumulative_bytes_received": p.cumulative_bytes_received,
         }
 
         client_computation = None
@@ -260,7 +259,7 @@ class _ProfiledStrategy(Strategy):
         result,
     ) -> dict[str, Any]:
         p = self._profiler
-        net_iface = getattr(p, "_network_interface", None)
+        net_iface = p.network_interface
 
         t0 = _t()
         eval_msgs = list(
@@ -289,8 +288,7 @@ class _ProfiledStrategy(Strategy):
         eval_payload_received = sr.rx_delta if sr.observed else 0
         eval_replies = sr.replies
 
-        p._cumulative_bytes_sent += eval_payload_sent
-        p._cumulative_bytes_received += eval_payload_received
+        p.add_payload_bytes(eval_payload_sent, eval_payload_received)
 
         comm: dict[str, Any] = {
             "send_receive_evaluate_time": sr.elapsed,
@@ -298,8 +296,8 @@ class _ProfiledStrategy(Strategy):
             "evaluate_payload_bytes_received": eval_payload_received,
             "updates_sent_evaluate": len(eval_msgs),
             "updates_received_evaluate": len(eval_replies),
-            "cumulative_bytes_sent": p._cumulative_bytes_sent,
-            "cumulative_bytes_received": p._cumulative_bytes_received,
+            "cumulative_bytes_sent": p.cumulative_bytes_sent,
+            "cumulative_bytes_received": p.cumulative_bytes_received,
         }
 
         client_computation = None
@@ -362,11 +360,11 @@ class _ProfiledStrategy(Strategy):
         p = self._profiler
         p.record("total", {"total_time": total_time})
         p.record_global("num_rounds", num_rounds)
-        p.record_global("cumulative_bytes_sent", p._cumulative_bytes_sent)
-        p.record_global("cumulative_bytes_received", p._cumulative_bytes_received)
+        p.record_global("cumulative_bytes_sent", p.cumulative_bytes_sent)
+        p.record_global("cumulative_bytes_received", p.cumulative_bytes_received)
 
         cumulative_total = (
-            p._cumulative_bytes_sent + p._cumulative_bytes_received
+            p.cumulative_bytes_sent + p.cumulative_bytes_received
         )
         p.record_global("cumulative_bytes_total", cumulative_total)
 
@@ -386,15 +384,11 @@ def _total_updates(*phase_contexts: dict[str, Any]) -> dict[str, int]:
 def profiled(
     strategy: Strategy, profiler: Profiler | None = None
 ) -> Strategy:
-    if profiler is not None and not profiler._enabled:
+    if profiler is not None and not profiler.enabled:
         return strategy
     if profiler is None:
         profiler = Profiler(enable_timing=True)
-    if not profiler._algorithm_name:
-        profiler._algorithm_name = strategy.__class__.__name__
-        profiler._metrics.record_global(
-            "algorithm_name", profiler._algorithm_name,
-        )
+    profiler.set_default_algorithm_name(strategy.__class__.__name__)
     return _ProfiledStrategy(strategy, profiler)
 
 
