@@ -21,11 +21,6 @@ dev = ["pytest>=8.0.0", "pandas>=2.0.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--import-mode=importlib"
 
-# Flat repo: modules live at the root but must import as the `enerfl` package.
 [tool.hatch.build.targets.wheel]
-include = ["*.py"]
-
-[tool.hatch.build.targets.wheel.sources]
-"" = "enerfl"
+packages = ["src/enerfl"]
