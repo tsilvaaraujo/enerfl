@@ -1,6 +1,7 @@
 import re
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Generator
 
 from ._safe import guard, report_failure
@@ -15,6 +16,13 @@ from .collectors import (
     WeightCountCollector,
 )
 from .csv_writer import MetricsCSVWriter
+from .metadata import (
+    collect_run_metadata,
+    default_metadata_path,
+    generate_run_id,
+    utc_now_iso,
+    write_json_atomic,
+)
 from .metrics import ProfilerMetrics
 
 _PER_CLIENT_RE = re.compile(r"^client_\d+_")
@@ -36,8 +44,13 @@ class Profiler:
         algorithm_name: str = "",
         round_num: int = 0,
         enabled: bool = True,
+        run_id: str | None = None,
+        metadata_path: str | None = None,
     ) -> None:
         self._enabled = enabled
+        self._run_id = run_id or generate_run_id()
+        self._started_at_utc = utc_now_iso()
+        self._metadata_path: Path | None = None
         self._collectors: list[MetricsCollector] = []
         self._metrics = ProfilerMetrics()
         self._current_round = round_num
@@ -51,6 +64,7 @@ class Profiler:
         if not enabled:
             return
 
+        self._metrics.record_global("run_id", self._run_id)
         if algorithm_name:
             self._metrics.record_global("algorithm_name", algorithm_name)
 
@@ -76,6 +90,20 @@ class Profiler:
                 self._carbon_tracker = None
         if stream_csv_path:
             self.enable_csv_stream(stream_csv_path)
+
+        if metadata_path:
+            self._metadata_path = Path(metadata_path)
+        elif stream_csv_path:
+            self._metadata_path = default_metadata_path(stream_csv_path)
+        self._configuration: dict[str, Any] = {
+            "collectors": [_collector_name(c) for c in self._collectors],
+            "enable_carbon": enable_carbon,
+            "carbon_tracker_kwargs": dict(carbon_tracker_kwargs or {}),
+            "network_interface": network_interface,
+            "stream_csv_path": stream_csv_path,
+            "initial_round": round_num,
+        }
+        self.write_metadata()
 
     def start_carbon(self) -> "Profiler":
         if self._carbon_tracker is not None:
@@ -160,6 +188,35 @@ class Profiler:
                 for round_num in sorted(self._metrics.rounds.keys())
             ]
             self._csv_writer.rewrite_rows(rows)
+
+    @property
+    def run_id(self) -> str:
+        return self._run_id
+
+    @property
+    def metadata_path(self) -> Path | None:
+        return self._metadata_path
+
+    def write_metadata(self, finished: bool = False) -> None:
+        """Write the run's JSON metadata, if a metadata path is known.
+
+        Called when the profiler is created (so an interrupted run still
+        leaves its metadata) and with ``finished=True`` at the end of the run,
+        which stamps ``finished_at_utc`` and the final global metrics.
+        """
+        if not self._enabled or self._metadata_path is None:
+            return
+        with guard("metadata.write"):
+            data = collect_run_metadata(
+                run_id=self._run_id,
+                algorithm_name=self._algorithm_name,
+                started_at_utc=self._started_at_utc,
+                configuration=self._configuration,
+            )
+            if finished:
+                data["finished_at_utc"] = utc_now_iso()
+            data["global_metrics"] = dict(self._metrics.global_metrics)
+            write_json_atomic(self._metadata_path, data)
 
     @property
     def enabled(self) -> bool:
@@ -258,6 +315,8 @@ class Profiler:
 
     def reset(self) -> None:
         self._metrics = ProfilerMetrics()
+        if self._enabled:
+            self._metrics.record_global("run_id", self._run_id)
         self._current_round = 0
         self._cumulative_bytes_sent = 0
         self._cumulative_bytes_received = 0

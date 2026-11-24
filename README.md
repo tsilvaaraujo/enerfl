@@ -59,6 +59,7 @@ src/enerfl/
 ├── comparison.py     # compare_runs() / compare_runs_to_csv()
 ├── csv_writer.py     # MetricsCSVWriter — streaming CSV output
 ├── metrics.py        # ProfilerMetrics — per-round metric storage dataclass
+├── metadata.py       # run_id and the JSON run-metadata file
 ├── network.py        # Host NIC byte counters (/proc/net/dev)
 ├── server.py         # Profiler — server-side profiler with collector system
 └── strategy.py       # Optional Flower Strategy integration
@@ -158,6 +159,12 @@ compare_runs_to_csv(profiler_fedavg, profiler_fedprox, profiler_fedadam, path="c
 | `enable_compression` | `False` | Compression/sparsity ratios |
 | `enable_carbon` | `False` | CO₂ emissions via CodeCarbon |
 | `algorithm_name` | `""` | Tag for CSV export and comparison |
+| `run_id` | generated | Identifier of the run (see [Run metadata](#run-metadata)) |
+| `metadata_path` | next to the CSV | Where to write the run's JSON metadata |
+
+### Run metadata
+
+Every `Profiler` has a `run_id` (`YYYYMMDDTHHMMSSZ-<8 hex>` unless you pass one), recorded in every CSV row. When `stream_csv_path` or `metadata_path` is set, a JSON file (`run.csv` -> `run.meta.json` by default) is written when the profiler is created, so an interrupted run still leaves its metadata, and rewritten at the end of the run with `finished_at_utc` and the final global metrics. It records the machine (hostname, OS, CPU, memory), Python and package versions (enerfl, flwr, codecarbon, protobuf), the git commit and dirty flag of the directory the process runs from, and the profiler configuration. Outside a Flower `profiled()` run, call `profiler.write_metadata(finished=True)` yourself. Metadata failures never abort a run.
 
 ## Metrics Collected
 
