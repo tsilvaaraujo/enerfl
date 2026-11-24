@@ -18,12 +18,18 @@ The core `Profiler` and `ClientProfiler` APIs are framework-agnostic and can ins
 ## Requirements
 
 - Python >= 3.11
-- Dependencies and their supported version ranges are declared in [pyproject.toml](pyproject.toml).
+- Dependencies and their supported version ranges are declared in [pyproject.toml](pyproject.toml). Flower is optional and only needed for `profiled()` (extra `flower`).
 
 ## Installation
 
 ```bash
 pip install .
+```
+
+With the Flower integration (`profiled()`):
+
+```bash
+pip install ".[flower]"
 ```
 
 With `to_dataframe()` support:
@@ -108,7 +114,7 @@ client_profiler.summary()
 
 ### Flower integration
 
-Wrap a Flower strategy with `profiled()` to capture per-round metrics automatically:
+Requires the `flower` extra (`pip install ".[flower]"`). Wrap a Flower strategy with `profiled()` to capture per-round metrics automatically:
 
 ```python
 from enerfl import Profiler, profiled, compare_runs_to_csv
