@@ -327,6 +327,7 @@ class _ProfiledStrategy(Strategy):
         for name, value in failure_summary().items():
             p.record_global(name, value)
         p.rewrite_csv_from_metrics()
+        p.write_metadata(finished=True)
 
 
 def _total_updates(*phase_contexts: dict[str, Any]) -> dict[str, int]:
