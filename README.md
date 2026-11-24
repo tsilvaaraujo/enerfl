@@ -37,20 +37,21 @@ pip install ".[dataframe]"
 The tests run against the real `flwr` and `codecarbon`:
 
 ```bash
-pip install ".[dev]"
+pip install -e ".[dev]"
 pytest
 ```
 
 ## Project Structure
 
 ```
-enerfl/
+src/enerfl/
 ├── __init__.py       # Public API — re-exports all components
 ├── _safe.py          # guard()/failure counters — profiling-failure isolation
 ├── carbon.py         # CarbonTracker — CodeCarbon wrapper for CO₂/energy
 ├── client.py         # ClientProfiler — client-side per-stage profiling
 ├── collectors.py     # Pluggable MetricsCollector base class and built-ins
 ├── comparison.py     # compare_runs() / compare_runs_to_csv()
+├── csv_writer.py     # MetricsCSVWriter — streaming CSV output
 ├── metrics.py        # ProfilerMetrics — per-round metric storage dataclass
 ├── server.py         # Profiler — server-side profiler with collector system
 └── strategy.py       # Optional Flower Strategy integration
