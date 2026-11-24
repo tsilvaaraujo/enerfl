@@ -13,7 +13,20 @@ from .comparison import compare_runs, compare_runs_to_csv
 from .csv_writer import MetricsCSVWriter
 from .metrics import ProfilerMetrics
 from .server import Profiler
-from .strategy import profiled
+
+try:
+    from .strategy import profiled
+except ModuleNotFoundError as exc:
+    if exc.name is None or exc.name.split(".")[0] != "flwr":
+        raise
+    _flwr_import_error = exc
+
+    def profiled(*_args, **_kwargs):  # type: ignore[no-redef]
+        """Stand-in used when flwr is not installed."""
+        raise ImportError(
+            "enerfl.profiled() requires Flower. "
+            "Install it with: pip install 'enerfl[flower]'"
+        ) from _flwr_import_error
 
 __all__ = [
     "Profiler",

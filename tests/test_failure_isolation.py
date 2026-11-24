@@ -1,4 +1,6 @@
 import builtins
+import subprocess
+import sys
 from unittest.mock import mock_open
 
 import pytest
@@ -321,3 +323,22 @@ def test_first_failure_per_site_is_logged_once_through_stdlib_logging(caplog):
     messages = [r.getMessage() for r in caplog.records]
     assert len(messages) == 1
     assert "profiling failure in site (ValueError: x)" in messages[0]
+
+
+def test_package_imports_without_flwr_and_profiled_explains_the_extra():
+    code = (
+        "import sys\n"
+        "sys.modules['flwr'] = None\n"
+        "import enerfl\n"
+        "from enerfl import Profiler, ClientProfiler\n"
+        "try:\n"
+        "    enerfl.profiled(object(), Profiler())\n"
+        "except ImportError as e:\n"
+        "    assert 'enerfl[flower]' in str(e), e\n"
+        "else:\n"
+        "    raise SystemExit('profiled() did not raise')\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True
+    )
+    assert proc.returncode == 0, proc.stderr
