@@ -16,6 +16,7 @@ except ImportError:
     _flwr_send_and_receive = None
 
 from ._safe import failure_summary, guard
+from .network import read_network_counters
 from .server import Profiler
 
 
@@ -407,41 +408,6 @@ def _with_phase_suffix(metrics: dict[str, Any], phase: str) -> dict[str, Any]:
     return {f"{key}_{phase}": value for key, value in metrics.items()}
 
 
-def _read_network_counters(iface: str | None = None) -> tuple[int, int] | None:
-    try:
-        return _parse_network_counters(iface)
-    except Exception:
-        return None
-
-
-def _parse_network_counters(iface: str | None) -> tuple[int, int] | None:
-    with open("/proc/net/dev", "r", encoding="utf-8") as f:
-        lines = f.readlines()[2:]
-
-    tx_total = 0
-    rx_total = 0
-
-    for line in lines:
-        if ":" not in line:
-            continue
-        name, rest = line.split(":", 1)
-        nic = name.strip()
-        if iface is not None and nic != iface:
-            continue
-        if iface is None and nic == "lo":
-            continue
-
-        parts = rest.split()
-        if len(parts) < 16:
-            continue
-        rx_total += int(parts[0])
-        tx_total += int(parts[8])
-
-    if iface is not None and tx_total == 0 and rx_total == 0:
-        return None
-    return tx_total, rx_total
-
-
 def _measure_send_receive_with_network_counters(
     *,
     grid,
@@ -449,7 +415,7 @@ def _measure_send_receive_with_network_counters(
     timeout: float,
     iface: str | None,
 ) -> _SendReceiveResult:
-    before = _read_network_counters(iface)
+    before = read_network_counters(iface)
     t0 = time.perf_counter()
     if _flwr_send_and_receive is not None:
         replies = list(
@@ -458,7 +424,7 @@ def _measure_send_receive_with_network_counters(
     else:
         replies = list(grid.send_and_receive(messages=messages, timeout=timeout))
     elapsed = time.perf_counter() - t0
-    after = _read_network_counters(iface)
+    after = read_network_counters(iface)
 
     if before is None or after is None:
         return _SendReceiveResult(replies, elapsed, 0, 0, False)

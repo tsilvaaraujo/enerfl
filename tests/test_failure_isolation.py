@@ -1,7 +1,5 @@
-import builtins
 import subprocess
 import sys
-from unittest.mock import mock_open
 
 import pytest
 from flwr.common import ArrayRecord
@@ -13,7 +11,7 @@ from enerfl import _safe
 from enerfl.client import ClientProfiler
 from enerfl.collectors import MetricsCollector, TimingCollector
 from enerfl.server import Profiler
-from enerfl.strategy import _ProfiledStrategy, _read_network_counters
+from enerfl.strategy import _ProfiledStrategy
 
 
 @pytest.fixture(autouse=True)
@@ -219,12 +217,6 @@ def test_csv_write_failures_do_not_raise(tmp_path):
     assert _safe.failure_sites() == {"csv.write_round": 1, "csv.rewrite": 1}
 
 
-def test_malformed_proc_net_dev_is_unobservable(monkeypatch):
-    content = "h1\nh2\n  eth0: 100 0 0 0 0 0 0 0 notanint 0 0 0 0 0 0 0\n"
-    monkeypatch.setattr(builtins, "open", mock_open(read_data=content))
-    assert _read_network_counters() is None
-
-
 def _run(p, grid):
     strat = _ProfiledStrategy(_Inner(), p)
     return strat.start(
@@ -233,7 +225,7 @@ def _run(p, grid):
 
 
 def test_clean_run_reports_zero_failures(monkeypatch):
-    monkeypatch.setattr(st, "_read_network_counters", lambda _i=None: None)
+    monkeypatch.setattr(st, "read_network_counters", lambda _i=None: None)
     p = Profiler()
     _run(p, _Grid([_Reply(1.0)]))
     assert p.get_metrics().global_metrics["profiler_failures"] == 0
@@ -241,7 +233,7 @@ def test_clean_run_reports_zero_failures(monkeypatch):
 
 
 def test_run_completes_when_profiling_code_fails(monkeypatch):
-    monkeypatch.setattr(st, "_read_network_counters", lambda _i=None: None)
+    monkeypatch.setattr(st, "read_network_counters", lambda _i=None: None)
 
     def broken(_replies):
         raise RuntimeError("bad reply shape")
@@ -258,7 +250,7 @@ def test_run_completes_when_profiling_code_fails(monkeypatch):
 
 
 def test_experiment_errors_are_not_swallowed(monkeypatch):
-    monkeypatch.setattr(st, "_read_network_counters", lambda _i=None: None)
+    monkeypatch.setattr(st, "read_network_counters", lambda _i=None: None)
     p = Profiler()
     with pytest.raises(TimeoutError, match="grid down"):
         _run(p, _Grid(error=TimeoutError("grid down")))
@@ -273,7 +265,7 @@ def test_timing_collector_is_default_and_unaffected():
 def test_start_returns_final_arrays_and_initial_arrays_without_aggregation(
     monkeypatch,
 ):
-    monkeypatch.setattr(st, "_read_network_counters", lambda _i=None: None)
+    monkeypatch.setattr(st, "read_network_counters", lambda _i=None: None)
     initial = ArrayRecord()
     result = _ProfiledStrategy(_Inner(), Profiler()).start(
         grid=_Grid([_Reply(1.0)]), initial_arrays=initial, num_rounds=1, timeout=1.0
@@ -282,7 +274,7 @@ def test_start_returns_final_arrays_and_initial_arrays_without_aggregation(
 
 
 def test_should_stop_ends_the_run_early_and_records_rounds_run(monkeypatch):
-    monkeypatch.setattr(st, "_read_network_counters", lambda _i=None: None)
+    monkeypatch.setattr(st, "read_network_counters", lambda _i=None: None)
     seen = []
 
     def should_stop(round_num, result):
@@ -303,7 +295,7 @@ def test_should_stop_ends_the_run_early_and_records_rounds_run(monkeypatch):
 
 
 def test_uses_flwr_send_and_receive_when_available(monkeypatch):
-    monkeypatch.setattr(st, "_read_network_counters", lambda _i=None: None)
+    monkeypatch.setattr(st, "read_network_counters", lambda _i=None: None)
     calls = []
 
     def fake(grid, messages, timeout):
