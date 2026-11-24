@@ -119,3 +119,9 @@ def test_client_reports_its_emissions(monkeypatch):
     record = cp.to_metric_record()
     carbon_mod._GLOBAL_TRACKER.stop()
     assert record["client_emissions_kg"] > 0
+
+
+def test_unsupported_kwarg_is_logged_through_stdlib_logging(caplog):
+    with caplog.at_level("WARNING", logger="enerfl.carbon"):
+        carbon_mod._filter_tracker_kwargs(EmissionsTracker, {"no_such_option": 1})
+    assert "dropping unsupported kwarg 'no_such_option'" in caplog.text

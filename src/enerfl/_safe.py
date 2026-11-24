@@ -1,10 +1,11 @@
+import logging
 import threading
 from collections import Counter
 from contextlib import contextmanager
-from logging import WARNING
 from typing import Any, Iterator
 
-from flwr.common import log
+
+logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 _counts: Counter[str] = Counter()
@@ -15,8 +16,7 @@ def report_failure(site: str, exc: BaseException) -> None:
         _counts[site] += 1
         first = _counts[site] == 1
     if first:
-        log(
-            WARNING,
+        logger.warning(
             "enerfl: profiling failure in %s (%s: %s); continuing without it. "
             "Further failures at this site are counted, not logged.",
             site,

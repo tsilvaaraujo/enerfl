@@ -311,3 +311,13 @@ def test_uses_flwr_send_and_receive_when_available(monkeypatch):
     monkeypatch.setattr(st, "_flwr_send_and_receive", fake)
     _run(Profiler(), _Grid(error=AssertionError("grid.send_and_receive used")))
     assert len(calls) == 4
+
+
+def test_first_failure_per_site_is_logged_once_through_stdlib_logging(caplog):
+    with caplog.at_level("WARNING", logger="enerfl._safe"):
+        for _ in range(3):
+            with _safe.guard("site"):
+                raise ValueError("x")
+    messages = [r.getMessage() for r in caplog.records]
+    assert len(messages) == 1
+    assert "profiling failure in site (ValueError: x)" in messages[0]

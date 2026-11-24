@@ -1,10 +1,10 @@
 import atexit
 import inspect
-from logging import WARNING
+import logging
 from time import perf_counter
 from typing import Any
 
-from flwr.common import log
+logger = logging.getLogger(__name__)
 
 _JOULES_PER_KWH = 3.6e6
 _GLOBAL_TRACKER: "CarbonTracker | None" = None
@@ -45,7 +45,7 @@ def _filter_tracker_kwargs(klass: type, kwargs: dict[str, Any]) -> dict[str, Any
         if key in accepted:
             filtered[key] = value
         else:
-            log(WARNING, "CarbonTracker: dropping unsupported kwarg %r", key)
+            logger.warning("CarbonTracker: dropping unsupported kwarg %r", key)
     return filtered
 
 
