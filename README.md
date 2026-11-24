@@ -61,6 +61,7 @@ src/enerfl/
 ├── metrics.py        # ProfilerMetrics — per-round metric storage dataclass
 ├── metadata.py       # run_id and the JSON run-metadata file
 ├── network.py        # Host NIC byte counters (/proc/net/dev)
+├── scheduler.py      # SLURM/OAR job and node-list detection
 ├── server.py         # Profiler — server-side profiler with collector system
 └── strategy.py       # Optional Flower Strategy integration
 ```
@@ -164,7 +165,7 @@ compare_runs_to_csv(profiler_fedavg, profiler_fedprox, profiler_fedadam, path="c
 
 ### Run metadata
 
-Every `Profiler` has a `run_id` (`YYYYMMDDTHHMMSSZ-<8 hex>` unless you pass one), recorded in every CSV row. When `stream_csv_path` or `metadata_path` is set, a JSON file (`run.csv` -> `run.meta.json` by default) is written when the profiler is created, so an interrupted run still leaves its metadata, and rewritten at the end of the run with `finished_at_utc` and the final global metrics. It records the machine (hostname, OS, CPU, memory), Python and package versions (enerfl, flwr, codecarbon, protobuf), the git commit and dirty flag of the directory the process runs from, and the profiler configuration. Outside a Flower `profiled()` run, call `profiler.write_metadata(finished=True)` yourself. Metadata failures never abort a run.
+Every `Profiler` has a `run_id` (`YYYYMMDDTHHMMSSZ-<8 hex>` unless you pass one), recorded in every CSV row. When `stream_csv_path` or `metadata_path` is set, a JSON file (`run.csv` -> `run.meta.json` by default) is written when the profiler is created, so an interrupted run still leaves its metadata, and rewritten at the end of the run with `finished_at_utc` and the final global metrics. It records the machine (hostname, OS, CPU, memory), Python and package versions (enerfl, flwr, codecarbon, protobuf), the git commit and dirty flag of the directory the process runs from, the batch-job context (`scheduler`: SLURM or OAR job id, name, partition/account/cluster, array ids, node count and the expanded node list; `null` outside a job) and the profiler configuration. The scheduler section holds only job and node identifiers, never user names or directories; SLURM node lists are expanded in Python (`node[01-03]` becomes three hosts) and, if one cannot be parsed, only the raw string is kept. Outside a Flower `profiled()` run, call `profiler.write_metadata(finished=True)` yourself. Metadata failures never abort a run.
 
 ## Metrics Collected
 
