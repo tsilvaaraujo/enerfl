@@ -8,6 +8,13 @@ from flwr.serverapp import Grid
 from flwr.serverapp.strategy import Strategy
 from flwr.serverapp.strategy.strategy import Result, log_strategy_start_info
 
+try:
+    from flwr.serverapp.strategy.strategy_utils import (
+        send_and_receive as _flwr_send_and_receive,
+    )
+except ImportError:
+    _flwr_send_and_receive = None
+
 from ._safe import failure_summary, guard
 from .server import Profiler
 
@@ -51,6 +58,7 @@ class _ProfiledStrategy(Strategy):
         evaluate_fn: (
             Callable[[int, ArrayRecord], MetricRecord | None] | None
         ) = None,
+        should_stop: Callable[[int, Result], bool] | None = None,
     ) -> Result:
         _t = time.perf_counter
         _rec = self._profiler.record
@@ -67,7 +75,7 @@ class _ProfiledStrategy(Strategy):
         evaluate_config = (
             ConfigRecord() if evaluate_config is None else evaluate_config
         )
-        result = Result()
+        result = Result(arrays=initial_arrays)
         p.start_carbon()
         t_total_start = _t()
 
@@ -81,6 +89,7 @@ class _ProfiledStrategy(Strategy):
                 result.evaluate_metrics_serverapp[0] = res
 
         arrays = initial_arrays
+        rounds_run = 0
 
         for current_round in range(1, num_rounds + 1):
             p.set_round(current_round)
@@ -126,8 +135,13 @@ class _ProfiledStrategy(Strategy):
             if train_ctx.get("agg_arrays") is not None:
                 arrays = train_ctx["agg_arrays"]
             p.write_round_to_csv(current_round)
+            rounds_run = current_round
 
-        self._record_session_totals(num_rounds, _t() - t_total_start)
+            if should_stop is not None and should_stop(current_round, result):
+                log(INFO, "Stopping early after round %s", current_round)
+                break
+
+        self._record_session_totals(rounds_run, _t() - t_total_start)
         return result
 
     def _profile_train_phase(
@@ -448,7 +462,7 @@ def _with_phase_suffix(metrics: dict[str, Any], phase: str) -> dict[str, Any]:
 def _read_network_counters(iface: str | None = None) -> tuple[int, int] | None:
     try:
         return _parse_network_counters(iface)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -489,7 +503,12 @@ def _measure_send_receive_with_network_counters(
 ) -> _SendReceiveResult:
     before = _read_network_counters(iface)
     t0 = time.perf_counter()
-    replies = list(grid.send_and_receive(messages=messages, timeout=timeout))
+    if _flwr_send_and_receive is not None:
+        replies = list(
+            _flwr_send_and_receive(grid=grid, messages=messages, timeout=timeout)
+        )
+    else:
+        replies = list(grid.send_and_receive(messages=messages, timeout=timeout))
     elapsed = time.perf_counter() - t0
     after = _read_network_counters(iface)
 
