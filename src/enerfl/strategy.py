@@ -27,6 +27,22 @@ class _SendReceiveResult(NamedTuple):
     observed: bool
 
 
+class _Exchange(NamedTuple):
+    replies: list[Message]
+    payload_sent: int
+    payload_received: int
+    client_computation: float | None
+
+    def context(self, updates_sent: int) -> dict[str, Any]:
+        return {
+            "payload_sent": self.payload_sent,
+            "payload_received": self.payload_received,
+            "updates_sent": updates_sent,
+            "updates_received": len(self.replies),
+            "client_computation": self.client_computation,
+        }
+
+
 class _ProfiledStrategy(Strategy):
     def __init__(self, strategy: Strategy, profiler: Profiler) -> None:
         self._strategy = strategy
@@ -148,9 +164,6 @@ class _ProfiledStrategy(Strategy):
         self, grid, current_round, arrays, train_config, timeout, _t, _rec,
         result,
     ) -> dict[str, Any]:
-        p = self._profiler
-        net_iface = p.network_interface
-
         t0 = _t()
         train_msgs = list(
             self.configure_train(current_round, arrays, train_config, grid)
@@ -160,68 +173,11 @@ class _ProfiledStrategy(Strategy):
             "messages_configured": len(train_msgs),
         })
 
-        sr = _measure_send_receive_with_network_counters(
-            grid=grid,
-            messages=train_msgs,
-            timeout=timeout,
-            iface=net_iface,
-        )
-        _rec(
-            "send_receive_train",
-            {
-                "send_receive_train_time": sr.elapsed,
-                "updates_sent_train": len(train_msgs),
-                "updates_received_train": len(sr.replies),
-            },
-        )
-
-        train_payload_sent = sr.tx_delta if sr.observed else 0
-        train_payload_received = sr.rx_delta if sr.observed else 0
-        train_replies = sr.replies
-
-        p.add_payload_bytes(train_payload_sent, train_payload_received)
-
-        comm: dict[str, Any] = {
-            "send_receive_train_time": sr.elapsed,
-            "train_payload_bytes_sent": train_payload_sent,
-            "train_payload_bytes_received": train_payload_received,
-            "updates_sent_train": len(train_msgs),
-            "updates_received_train": len(train_replies),
-            "cumulative_bytes_sent": p.cumulative_bytes_sent,
-            "cumulative_bytes_received": p.cumulative_bytes_received,
-        }
-
-        client_computation = None
-        with guard("communication_train.derived"):
-            client_times = _client_total_times(train_replies)
-            client_computation = max(client_times) if client_times else None
-            if client_times:
-                network_overhead = max(0.0, sr.elapsed - client_computation)
-                comm["client_computation_train"] = client_computation
-                comm["network_overhead_train"] = network_overhead
-                comm["straggler_index_train"] = client_computation - min(
-                    client_times
-                )
-                if client_computation > 0:
-                    comm["comm_to_compute_ratio_train"] = (
-                        network_overhead / client_computation
-                    )
-
-            if sr.observed and sr.elapsed > 0:
-                comm["bandwidth_utilization_bytes_per_sec_train"] = (
-                    train_payload_sent + train_payload_received
-                ) / sr.elapsed
-
-        _rec("communication_train", comm)
-
-        with guard("client_carbon_train.totals"):
-            carbon_totals = _client_carbon_totals(train_replies, "train")
-            if carbon_totals:
-                _rec("client_carbon_train", carbon_totals)
+        ex = self._exchange("train", grid, train_msgs, timeout, _rec)
 
         t0 = _t()
         agg_arrays, agg_metrics = self.aggregate_train(
-            current_round, train_replies,
+            current_round, ex.replies,
         )
         _rec("weight_aggregation_train", {
             "weight_aggregation_train_time": _t() - t0,
@@ -237,30 +193,14 @@ class _ProfiledStrategy(Strategy):
         if agg_metrics is not None:
             log(INFO, "\t\u2514\u2500\u2500> Train metrics: %s", agg_metrics)
             result.train_metrics_clientapp[current_round] = agg_metrics
-            with guard("client_train.metrics"):
-                client_scalars = _scalar_metrics(agg_metrics)
-                if client_scalars:
-                    _rec(
-                        "client_train",
-                        _with_phase_suffix(client_scalars, "train"),
-                    )
+            self._record_client_metrics("train", agg_metrics, _rec)
 
-        return {
-            "payload_sent": train_payload_sent,
-            "payload_received": train_payload_received,
-            "updates_sent": len(train_msgs),
-            "updates_received": len(train_replies),
-            "agg_arrays": agg_arrays,
-            "client_computation": client_computation,
-        }
+        return {**ex.context(len(train_msgs)), "agg_arrays": agg_arrays}
 
     def _profile_evaluate_phase(
         self, grid, current_round, arrays, evaluate_config, timeout, _t, _rec,
         result,
     ) -> dict[str, Any]:
-        p = self._profiler
-        net_iface = p.network_interface
-
         t0 = _t()
         eval_msgs = list(
             self.configure_evaluate(
@@ -269,69 +209,12 @@ class _ProfiledStrategy(Strategy):
         )
         _rec("configure_evaluate", {"configure_evaluate_time": _t() - t0})
 
-        sr = _measure_send_receive_with_network_counters(
-            grid=grid,
-            messages=eval_msgs,
-            timeout=timeout,
-            iface=net_iface,
-        )
-        _rec(
-            "send_receive_evaluate",
-            {
-                "send_receive_evaluate_time": sr.elapsed,
-                "updates_sent_evaluate": len(eval_msgs),
-                "updates_received_evaluate": len(sr.replies),
-            },
-        )
-
-        eval_payload_sent = sr.tx_delta if sr.observed else 0
-        eval_payload_received = sr.rx_delta if sr.observed else 0
-        eval_replies = sr.replies
-
-        p.add_payload_bytes(eval_payload_sent, eval_payload_received)
-
-        comm: dict[str, Any] = {
-            "send_receive_evaluate_time": sr.elapsed,
-            "evaluate_payload_bytes_sent": eval_payload_sent,
-            "evaluate_payload_bytes_received": eval_payload_received,
-            "updates_sent_evaluate": len(eval_msgs),
-            "updates_received_evaluate": len(eval_replies),
-            "cumulative_bytes_sent": p.cumulative_bytes_sent,
-            "cumulative_bytes_received": p.cumulative_bytes_received,
-        }
-
-        client_computation = None
-        with guard("communication_evaluate.derived"):
-            client_times = _client_total_times(eval_replies)
-            client_computation = max(client_times) if client_times else None
-            if client_times:
-                network_overhead = max(0.0, sr.elapsed - client_computation)
-                comm["client_computation_evaluate"] = client_computation
-                comm["network_overhead_evaluate"] = network_overhead
-                comm["straggler_index_evaluate"] = client_computation - min(
-                    client_times
-                )
-                if client_computation > 0:
-                    comm["comm_to_compute_ratio_evaluate"] = (
-                        network_overhead / client_computation
-                    )
-
-            if sr.observed and sr.elapsed > 0:
-                comm["bandwidth_utilization_bytes_per_sec_evaluate"] = (
-                    eval_payload_sent + eval_payload_received
-                ) / sr.elapsed
-
-        _rec("communication_evaluate", comm)
-
-        with guard("client_carbon_evaluate.totals"):
-            carbon_totals = _client_carbon_totals(eval_replies, "evaluate")
-            if carbon_totals:
-                _rec("client_carbon_evaluate", carbon_totals)
+        ex = self._exchange("evaluate", grid, eval_msgs, timeout, _rec)
 
         t0 = _t()
         agg_eval_metrics = (
-            self.aggregate_evaluate(current_round, eval_replies)
-            if eval_replies else None
+            self.aggregate_evaluate(current_round, ex.replies)
+            if ex.replies else None
         )
         _rec("metric_aggregation_evaluate", {
             "metric_aggregation_evaluate_time": _t() - t0,
@@ -340,21 +223,92 @@ class _ProfiledStrategy(Strategy):
         if agg_eval_metrics is not None:
             log(INFO, "\t\u2514\u2500\u2500> Eval metrics: %s", agg_eval_metrics)
             result.evaluate_metrics_clientapp[current_round] = agg_eval_metrics
-            with guard("client_evaluate.metrics"):
-                client_scalars = _scalar_metrics(agg_eval_metrics)
-                if client_scalars:
-                    _rec(
-                        "client_evaluate",
-                        _with_phase_suffix(client_scalars, "evaluate"),
+            self._record_client_metrics("evaluate", agg_eval_metrics, _rec)
+
+        return ex.context(len(eval_msgs))
+
+    def _exchange(
+        self, phase: str, grid, msgs: list[Message], timeout, _rec,
+    ) -> _Exchange:
+        """Send ``msgs`` and record what the phase's round trip cost.
+
+        Shared by the train and evaluate phases; ``phase`` is the suffix used
+        in every metric name and guard site.
+        """
+        p = self._profiler
+
+        sr = _measure_send_receive_with_network_counters(
+            grid=grid,
+            messages=msgs,
+            timeout=timeout,
+            iface=p.network_interface,
+        )
+        _rec(
+            f"send_receive_{phase}",
+            {
+                f"send_receive_{phase}_time": sr.elapsed,
+                f"updates_sent_{phase}": len(msgs),
+                f"updates_received_{phase}": len(sr.replies),
+            },
+        )
+
+        payload_sent = sr.tx_delta if sr.observed else 0
+        payload_received = sr.rx_delta if sr.observed else 0
+        replies = sr.replies
+
+        p.add_payload_bytes(payload_sent, payload_received)
+
+        comm: dict[str, Any] = {
+            f"send_receive_{phase}_time": sr.elapsed,
+            f"{phase}_payload_bytes_sent": payload_sent,
+            f"{phase}_payload_bytes_received": payload_received,
+            f"updates_sent_{phase}": len(msgs),
+            f"updates_received_{phase}": len(replies),
+            "cumulative_bytes_sent": p.cumulative_bytes_sent,
+            "cumulative_bytes_received": p.cumulative_bytes_received,
+        }
+
+        client_computation = None
+        with guard(f"communication_{phase}.derived"):
+            client_times = _client_total_times(replies)
+            client_computation = max(client_times) if client_times else None
+            if client_times:
+                network_overhead = max(0.0, sr.elapsed - client_computation)
+                comm[f"client_computation_{phase}"] = client_computation
+                comm[f"network_overhead_{phase}"] = network_overhead
+                comm[f"straggler_index_{phase}"] = client_computation - min(
+                    client_times
+                )
+                if client_computation > 0:
+                    comm[f"comm_to_compute_ratio_{phase}"] = (
+                        network_overhead / client_computation
                     )
 
-        return {
-            "payload_sent": eval_payload_sent,
-            "payload_received": eval_payload_received,
-            "updates_sent": len(eval_msgs),
-            "updates_received": len(eval_replies),
-            "client_computation": client_computation,
-        }
+            if sr.observed and sr.elapsed > 0:
+                comm[f"bandwidth_utilization_bytes_per_sec_{phase}"] = (
+                    payload_sent + payload_received
+                ) / sr.elapsed
+
+        _rec(f"communication_{phase}", comm)
+
+        with guard(f"client_carbon_{phase}.totals"):
+            carbon_totals = _client_carbon_totals(replies, phase)
+            if carbon_totals:
+                _rec(f"client_carbon_{phase}", carbon_totals)
+
+        return _Exchange(
+            replies, payload_sent, payload_received, client_computation
+        )
+
+    @staticmethod
+    def _record_client_metrics(phase: str, agg_metrics, _rec) -> None:
+        with guard(f"client_{phase}.metrics"):
+            client_scalars = _scalar_metrics(agg_metrics)
+            if client_scalars:
+                _rec(
+                    f"client_{phase}",
+                    _with_phase_suffix(client_scalars, phase),
+                )
 
     def _record_session_totals(self, num_rounds: int, total_time: float) -> None:
         p = self._profiler
