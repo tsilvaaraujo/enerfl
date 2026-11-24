@@ -12,10 +12,13 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
+        flwr: ["latest", "1.31.0"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install ".[dev]"
+      - if: matrix.flwr != 'latest'
+        run: pip install "flwr==${{ matrix.flwr }}"
       - run: pytest -q

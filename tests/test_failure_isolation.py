@@ -15,7 +15,8 @@ from enerfl.strategy import _ProfiledStrategy, _read_network_counters
 
 
 @pytest.fixture(autouse=True)
-def _clean_failures():
+def _clean_failures(monkeypatch):
+    monkeypatch.setattr(st, "_flwr_send_and_receive", None)
     _safe.reset_failures()
     yield
     _safe.reset_failures()
@@ -265,3 +266,48 @@ def test_experiment_errors_are_not_swallowed(monkeypatch):
 def test_timing_collector_is_default_and_unaffected():
     p = Profiler()
     assert any(isinstance(c, TimingCollector) for c in p._collectors)
+
+
+def test_start_returns_final_arrays_and_initial_arrays_without_aggregation(
+    monkeypatch,
+):
+    monkeypatch.setattr(st, "_read_network_counters", lambda _i=None: None)
+    initial = ArrayRecord()
+    result = _ProfiledStrategy(_Inner(), Profiler()).start(
+        grid=_Grid([_Reply(1.0)]), initial_arrays=initial, num_rounds=1, timeout=1.0
+    )
+    assert result.arrays is initial
+
+
+def test_should_stop_ends_the_run_early_and_records_rounds_run(monkeypatch):
+    monkeypatch.setattr(st, "_read_network_counters", lambda _i=None: None)
+    seen = []
+
+    def should_stop(round_num, result):
+        seen.append(round_num)
+        return round_num == 2
+
+    p = Profiler()
+    _ProfiledStrategy(_Inner(), p).start(
+        grid=_Grid([_Reply(1.0)]),
+        initial_arrays=ArrayRecord(),
+        num_rounds=5,
+        timeout=1.0,
+        should_stop=should_stop,
+    )
+    assert seen == [1, 2]
+    assert sorted(p.get_metrics().rounds) == [1, 2]
+    assert p.get_metrics().global_metrics["num_rounds"] == 2
+
+
+def test_uses_flwr_send_and_receive_when_available(monkeypatch):
+    monkeypatch.setattr(st, "_read_network_counters", lambda _i=None: None)
+    calls = []
+
+    def fake(grid, messages, timeout):
+        calls.append(timeout)
+        return [_Reply(1.0)]
+
+    monkeypatch.setattr(st, "_flwr_send_and_receive", fake)
+    _run(Profiler(), _Grid(error=AssertionError("grid.send_and_receive used")))
+    assert len(calls) == 4

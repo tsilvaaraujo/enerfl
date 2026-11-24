@@ -10,7 +10,7 @@ readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
 dependencies = [
-    "flwr>=1.31.0,<1.32.0",
+    "flwr>=1.31.0,<1.45.0",
     "codecarbon>=3.2.0",
     "protobuf>=5.28.0",
 ]
