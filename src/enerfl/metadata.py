@@ -12,6 +12,8 @@ from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
 
+from .scheduler import scheduler_info
+
 SCHEMA_VERSION = 1
 
 _TRACKED_PACKAGES = ("enerfl", "flwr", "codecarbon", "protobuf")
@@ -89,6 +91,7 @@ def collect_run_metadata(
         "packages": package_versions(),
         "machine": machine_info(),
         "git": git_info(),
+        "scheduler": scheduler_info(),
         "configuration": configuration,
         "global_metrics": {},
     }
