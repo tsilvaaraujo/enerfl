@@ -169,22 +169,15 @@ Every `Profiler` has a `run_id` (`YYYYMMDDTHHMMSSZ-<8 hex>` unless you pass one)
 
 ## Metrics Collected
 
-### Run/round metrics
+Every column, with its unit and where it comes from, is documented in [docs/csv-columns.md](docs/csv-columns.md). In short:
 
-- **Timing**: `configure_train_time`, `send_receive_train_time`, `weight_aggregation_train_time`, `round_total_time`, and evaluate equivalents. `send_receive_train_time` is the full dispatch→collect span (network + client compute + straggler wait), not pure network.
-- **Payload**: `serialize_train_payload_bytes_sent`, `deserialize_train_payload_bytes_received`, cumulative byte totals.
-- **Client decomposition with Flower**: `client_computation_train`, `network_overhead_train`, and evaluate equivalents — reconstructed from the per-client `client_total_time` embedded in each reply.
-- **Derived** (recorded only when the inputs are available): `straggler_index_train`/`straggler_index_evaluate` (slowest − fastest client), `comm_to_compute_ratio_train`/`_evaluate` (network overhead ÷ client compute), `bandwidth_utilization_bytes_per_sec_train`/`_evaluate` (payload bytes ÷ dispatch→collect span, only when NIC counters are observable), and `round_efficiency` (client compute ÷ round wall-clock).
-- **Client metrics with Flower**: every numeric metric aggregated from client replies, suffixed with its phase (e.g. `loss_train`, `accuracy_evaluate`, `client_energy_joules_train`, `client_energy_joules_evaluate`), so evaluate values never overwrite train values.
-- **Client energy totals with Flower**: Flower aggregates client metrics as a weighted average, so `client_energy_joules_train` is a mean per client, not the federation total. The totals are read from each client reply instead: `client_energy_joules_sum_train`, `client_energy_joules_max_train`, `client_energy_joules_min_train`, the same for `client_emissions_kg`, and evaluate equivalents.
-- **Carbon** (optional): `total_emissions_kg`, `total_energy_joules`, `total_carbon_duration`.
-
-### Stage metrics
-
-- Per-stage timing (`data_loading_time`, `local_training_time`, etc.)
-- `client_total_time`
-- Optional payload bytes per stage
-- Optional carbon emissions
+- **Timing** per round and phase: `configure_train_time`, `send_receive_train_time`, `weight_aggregation_train_time`, `round_total_time`, `total_time`, and evaluate equivalents.
+- **Communication**: messages sent and received per phase, host payload bytes (`train_payload_bytes_sent`, ...) and run totals (`cumulative_bytes_*`).
+- **Client decomposition**: `client_computation_train`, `network_overhead_train`, `straggler_index_train`, `comm_to_compute_ratio_train`, `round_efficiency`.
+- **Client metrics**: every numeric metric aggregated from client replies, suffixed with its phase (`loss_train`, `accuracy_evaluate`). Flower aggregates them as weighted means.
+- **Client energy totals**: `client_energy_joules_sum_train` and `_max`/`_min`, the same for `client_emissions_kg`, read from each reply.
+- **Server carbon** (optional): `total_energy_joules`, `total_emissions_kg`, `total_carbon_duration`.
+- **Data quality**: `profiler_failures`, `profiler_failure_sites`.
 
 ## Failure isolation
 
