@@ -34,9 +34,9 @@ This page lists every column enerfl writes, with its unit and where its value co
 | Column | Unit | Description |
 |---|---|---|
 | `num_rounds` | rounds | Rounds actually run (fewer than requested when `should_stop` ends the run early). |
-| `cumulative_bytes_sent` | bytes | Total bytes sent by the server host during all send/receive spans. See [Known caveats](#known-caveats). |
-| `cumulative_bytes_received` | bytes | Total bytes received, same scope. |
-| `cumulative_bytes_total` | bytes | `cumulative_bytes_sent + cumulative_bytes_received`. |
+| `total_bytes_sent` | bytes | Bytes sent by the server host during all send/receive spans of the run. |
+| `total_bytes_received` | bytes | Bytes received, same scope. |
+| `total_bytes` | bytes | `total_bytes_sent + total_bytes_received`. |
 | `total_energy_joules` | J | Server process energy over the whole run (CodeCarbon). Only with `enable_carbon=True`. |
 | `total_emissions_kg` | kg CO₂eq | Server emissions over the whole run. Only with `enable_carbon=True`. |
 | `total_carbon_duration` | s | Time the server carbon tracker ran. Only with `enable_carbon=True`. |
@@ -53,6 +53,9 @@ This page lists every column enerfl writes, with its unit and where its value co
 | `round_efficiency` | ratio | `(client_computation_train + client_computation_evaluate) / round_total_time`. Share of the round spent in client computation. |
 | `updates_sent` | messages | Messages sent in the round, train + evaluate. |
 | `updates_received` | messages | Replies received in the round, train + evaluate. |
+| `cumulative_bytes_sent` | bytes | Bytes sent by the server host from the start of the run to the end of this round. |
+| `cumulative_bytes_received` | bytes | Bytes received, same scope. |
+| `cumulative_bytes_total` | bytes | `cumulative_bytes_sent + cumulative_bytes_received`. |
 | `total_time` | s | Whole run on the server. Last round's row only. |
 
 ### Per phase
@@ -142,6 +145,5 @@ Collectors only report what is passed in `context`; they do not measure payloads
 ## Known caveats
 
 - **Payload bytes are host traffic.** They are the difference of the `/proc/net/dev` counters before and after the send/receive span, summed over all interfaces except `lo` unless `network_interface` is set. Any other traffic on the host in that span is included. Outside Linux the counters are not observable and the payload columns are `0`.
-- **`cumulative_bytes_*` lose their per-round values.** Each round records the running total, but the final rewrite of the CSV fills every row with the run total, because the global value has the same name.
 - **Energy covers the whole machine, not only FL work.** CodeCarbon measures the machine by default; when several clients share a node, their energy readings overlap.
 - **Energy may be estimated.** When CodeCarbon cannot read hardware counters (for example RAPL is not readable), it falls back to a model based on the CPU's TDP and load. The values are then estimates, not measurements.

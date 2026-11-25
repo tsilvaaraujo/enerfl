@@ -1,6 +1,7 @@
 import time
 
 import pytest
+from flwr.common import ArrayRecord
 
 import enerfl.strategy as st
 from enerfl.server import Profiler
@@ -359,3 +360,31 @@ def test_client_carbon_totals_are_recorded_per_phase(monkeypatch):
     row = profiler._build_round_row(1)
     assert row["client_energy_joules_sum_train"] == 40.0
     assert row["client_energy_joules_sum_evaluate"] == 2.0
+
+
+class _GridReplyingOnce:
+    def send_and_receive(self, messages, timeout):
+        return [_Reply(1.0)]
+
+
+def test_cumulative_bytes_keep_their_per_round_values(monkeypatch, tmp_path):
+    counters = iter(range(0, 10_000, 100))
+    monkeypatch.setattr(st, "_flwr_send_and_receive", None)
+    monkeypatch.setattr(
+        st, "read_network_counters", lambda _iface=None: (next(counters), 0)
+    )
+    profiler = Profiler(stream_csv_path=str(tmp_path / "run.csv"))
+    _ProfiledStrategy(_FakeInner(), profiler).start(
+        grid=_GridReplyingOnce(),
+        initial_arrays=ArrayRecord(),
+        num_rounds=2,
+        timeout=1.0,
+    )
+
+    round_1 = profiler._build_round_row(1)
+    round_2 = profiler._build_round_row(2)
+    assert round_1["cumulative_bytes_sent"] == 200
+    assert round_2["cumulative_bytes_sent"] == 400
+    assert round_1["cumulative_bytes_total"] == 200
+    assert round_2["total_bytes_sent"] == 400
+    assert round_2["total_bytes"] == 400
