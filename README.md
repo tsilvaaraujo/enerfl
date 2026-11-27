@@ -172,7 +172,7 @@ Every `Profiler` has a `run_id` (`YYYYMMDDTHHMMSSZ-<8 hex>` unless you pass one)
 Every column, with its unit and where it comes from, is documented in [docs/csv-columns.md](docs/csv-columns.md). In short:
 
 - **Timing** per round and phase: `configure_train_time`, `send_receive_train_time`, `weight_aggregation_train_time`, `round_total_time`, `total_time`, and evaluate equivalents.
-- **Communication**: messages sent and received per phase, host payload bytes (`train_payload_bytes_sent`, ...) and run totals (`cumulative_bytes_*`).
+- **Communication**: messages sent and received per phase, host payload bytes (`train_payload_bytes_sent`, ...), running totals per round (`cumulative_bytes_*`) and run totals (`total_bytes_*`).
 - **Client decomposition**: `client_computation_train`, `network_overhead_train`, `straggler_index_train`, `comm_to_compute_ratio_train`, `round_efficiency`.
 - **Client metrics**: every numeric metric aggregated from client replies, suffixed with its phase (`loss_train`, `accuracy_evaluate`). Flower aggregates them as weighted means.
 - **Client energy totals**: `client_energy_joules_sum_train` and `_max`/`_min`, the same for `client_emissions_kg`, read from each reply.

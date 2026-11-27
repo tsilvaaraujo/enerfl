@@ -267,6 +267,9 @@ class _ProfiledStrategy(Strategy):
             f"updates_received_{phase}": len(replies),
             "cumulative_bytes_sent": p.cumulative_bytes_sent,
             "cumulative_bytes_received": p.cumulative_bytes_received,
+            "cumulative_bytes_total": (
+                p.cumulative_bytes_sent + p.cumulative_bytes_received
+            ),
         }
 
         client_computation = None
@@ -315,13 +318,11 @@ class _ProfiledStrategy(Strategy):
         p = self._profiler
         p.record("total", {"total_time": total_time})
         p.record_global("num_rounds", num_rounds)
-        p.record_global("cumulative_bytes_sent", p.cumulative_bytes_sent)
-        p.record_global("cumulative_bytes_received", p.cumulative_bytes_received)
-
-        cumulative_total = (
-            p.cumulative_bytes_sent + p.cumulative_bytes_received
+        p.record_global("total_bytes_sent", p.cumulative_bytes_sent)
+        p.record_global("total_bytes_received", p.cumulative_bytes_received)
+        p.record_global(
+            "total_bytes", p.cumulative_bytes_sent + p.cumulative_bytes_received
         )
-        p.record_global("cumulative_bytes_total", cumulative_total)
 
         p.stop_carbon()
         for name, value in failure_summary().items():
